@@ -3,8 +3,27 @@
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
       Title="Einstellungen">
-    <StackPanel Margin="24">
+    <StackPanel Margin="24" MaxWidth="700" HorizontalAlignment="Left">
         <ui:TextBlock Text="Einstellungen" FontTypography="Title" />
-        <ui:TextBlock Margin="0,8,0,0" Text="Fotoordner: C:\Data\Images" />
+
+        <ui:Card Margin="0,16,0,0">
+            <StackPanel>
+                <ui:TextBlock Text="Aktivitäten" FontTypography="Subtitle" />
+                <ui:TextBlock x:Name="CountText" Margin="0,4,0,0" />
+                <ui:Button x:Name="SyncButton" Margin="0,12,0,0"
+                           Content="Synchronisieren" Appearance="Primary"
+                           Icon="{ui:SymbolIcon ArrowSync24}" Click="OnSyncClick" />
+                <ProgressBar x:Name="Progress" Margin="0,12,0,0" Height="4" Visibility="Collapsed" />
+                <ui:TextBlock x:Name="StatusText" Margin="0,8,0,0" TextWrapping="Wrap" />
+            </StackPanel>
+        </ui:Card>
+
+        <ui:Card Margin="0,12,0,0">
+            <StackPanel>
+                <ui:TextBlock Text="Speicherorte" FontTypography="Subtitle" />
+                <ui:TextBlock x:Name="PhotoText" Margin="0,4,0,0" />
+                <ui:TextBlock x:Name="DbText" Margin="0,4,0,0" TextWrapping="Wrap" />
+            </StackPanel>
+        </ui:Card>
     </StackPanel>
 </Page>

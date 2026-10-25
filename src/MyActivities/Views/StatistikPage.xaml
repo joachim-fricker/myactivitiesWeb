@@ -2,9 +2,38 @@
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      xmlns:sp="clr-namespace:ScottPlot.WPF;assembly=ScottPlot.WPF"
+      ScrollViewer.CanContentScroll="False"
       Title="Statistik">
-    <StackPanel Margin="24">
-        <ui:TextBlock Text="Statistik" FontTypography="Title" />
-        <ui:TextBlock Margin="0,8,0,0" Text="Kilometer und Höhenmeter pro Jahr – folgt." />
-    </StackPanel>
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Orientation="Horizontal">
+            <ui:TextBlock Text="Statistik" FontTypography="Title" VerticalAlignment="Center" />
+            <ComboBox x:Name="GroupBox" Width="150" Margin="32,0,0,0"
+                      SelectedIndex="0" SelectionChanged="OnSelectionChanged">
+                <ComboBoxItem Content="Rad" />
+                <ComboBoxItem Content="Wandern" />
+                <ComboBoxItem Content="Skitouren" />
+                <ComboBoxItem Content="Total" />
+            </ComboBox>
+            <ComboBox x:Name="MetricBox" Width="150" Margin="12,0,0,0"
+                      SelectedIndex="0" SelectionChanged="OnSelectionChanged">
+                <ComboBoxItem Content="Kilometer" />
+                <ComboBoxItem Content="Höhenmeter" />
+            </ComboBox>
+        </StackPanel>
+
+        <ui:TextBlock x:Name="EmptyHint" Grid.Row="1" Margin="0,24,0,0" Visibility="Collapsed"
+                      Text="Noch keine Daten – bitte unter Einstellungen synchronisieren." />
+        <sp:WpfPlot x:Name="Chart" Grid.Row="1" Margin="0,16,0,0" />
+
+        <DataGrid x:Name="Table" Grid.Row="2" Height="260" Margin="0,16,0,0"
+                  Style="{StaticResource Table}" AutoGenerateColumns="True"
+                  AutoGeneratingColumn="OnAutoGeneratingColumn" />
+    </Grid>
 </Page>

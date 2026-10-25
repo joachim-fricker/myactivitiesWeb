@@ -13,6 +13,13 @@
   <ItemGroup>
     <PackageReference Include="WPF-UI" Version="4.*" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.*" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.*" />
+    <PackageReference Include="ScottPlot.WPF" Version="5.*" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
