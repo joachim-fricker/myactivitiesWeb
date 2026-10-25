@@ -2,8 +2,8 @@ namespace MyActivities.Domain;
 
 public readonly record struct GeoPoint(double Lat, double Lon);
 
-/// <summary>GPX-Punkt mit Zeitstempel (UTC).</summary>
-public readonly record struct TimedPoint(double Lat, double Lon, DateTime Utc);
+/// <summary>GPX-Punkt mit Zeitstempel (UTC) und Höhe (m, falls vorhanden).</summary>
+public readonly record struct TimedPoint(double Lat, double Lon, DateTime Utc, double? Ele = null);
 
 /// <summary>Eine Aktivität aus der lokalen Datenbank.</summary>
 public sealed class Activity

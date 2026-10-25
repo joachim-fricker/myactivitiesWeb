@@ -17,6 +17,10 @@ public sealed class TourPhoto(string path, DateTime taken) : INotifyPropertyChan
     public GeoPoint? Gps { get; set; }
     public int Orientation { get; set; } = 1;
     public GeoPoint? MapPosition { get; set; }
+    /// <summary>Name und Datum der Tour (nur bei Fotos aus mehreren Touren gesetzt).</summary>
+    public string? TourName { get; set; }
+    /// <summary>Text für Tooltip und Bildbetrachter.</summary>
+    public string Description => TourName is null ? $"{Taken:dd.MM.yyyy HH:mm}" : $"{TourName} · {Taken:HH:mm}";
 
     private BitmapSource? _thumb;
     public BitmapSource? Thumb

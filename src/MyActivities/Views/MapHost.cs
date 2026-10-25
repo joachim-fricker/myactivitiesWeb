@@ -30,12 +30,44 @@ public static class MapHost
     }
 
     /// <summary>Index des angeklickten Fotos aus einer Nachricht von map.html, sonst null.</summary>
-    public static int? PhotoIndex(CoreWebView2WebMessageReceivedEventArgs e)
+    public static int? PhotoIndex(CoreWebView2WebMessageReceivedEventArgs e) =>
+        MessageValue(e, "photo") is long v ? (int)v : null;
+
+    /// <summary>ID der Tour, deren Details angezeigt werden sollen (Link im Popup), sonst null.</summary>
+    public static long? DetailsId(CoreWebView2WebMessageReceivedEventArgs e) => MessageValue(e, "details");
+
+    /// <summary>ID der angeklickten Tour (Weltkarte), sonst null.</summary>
+    public static long? SelectedId(CoreWebView2WebMessageReceivedEventArgs e) => MessageValue(e, "select");
+
+    /// <summary>Kartenausschnitt der Weltkarte: Touren im Ausschnitt, davon nicht geöffnet, Zoomstufe.</summary>
+    public static (int Count, int Closed, double Zoom)? ViewInfo(CoreWebView2WebMessageReceivedEventArgs e)
     {
         try
         {
             using var doc = JsonDocument.Parse(e.TryGetWebMessageAsString());
-            return doc.RootElement.TryGetProperty("photo", out var value) ? value.GetInt32() : null;
+            if (!doc.RootElement.TryGetProperty("view", out var v)) return null;
+            return (v.GetProperty("count").GetInt32(), v.GetProperty("closed").GetInt32(), v.GetProperty("zoom").GetDouble());
+        }
+        catch (Exception ex) when (ex is JsonException or ArgumentException or InvalidOperationException or KeyNotFoundException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Zahl unter key aus einer JSON-Nachricht von map.html, z. B. {"photo": 3}.</summary>
+    private static long? MessageValue(CoreWebView2WebMessageReceivedEventArgs e, string key)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(e.TryGetWebMessageAsString());
+            if (!doc.RootElement.TryGetProperty(key, out var value)) return null;
+            return value.ValueKind switch
+            {
+                JsonValueKind.Number when value.TryGetInt64(out var l) => l,
+                JsonValueKind.Number => (long)Math.Round(value.GetDouble()),   // z. B. 1.7774635432E10
+                JsonValueKind.String when long.TryParse(value.GetString(), out var s) => s,
+                _ => null,
+            };
         }
         catch (Exception ex) when (ex is JsonException or ArgumentException or InvalidOperationException)
         {

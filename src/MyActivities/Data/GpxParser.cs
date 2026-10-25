@@ -24,33 +24,45 @@ public static class GpxParser
         return trk.Count > 0 ? trk : rte;
     }
 
-    /// <summary>Trackpunkte mit gültiger Zeit, nach Zeit sortiert (für die Platzierung von Fotos).</summary>
+    /// <summary>Trackpunkte mit gültiger Zeit (und Höhe), nach Zeit sortiert.</summary>
     public static List<TimedPoint> ParseTimed(string gpx)
     {
         var result = new List<TimedPoint>();
         using var reader = XmlReader.Create(new StringReader(gpx), Settings);
         double lat = 0, lon = 0;
+        double? ele = null;
+        DateTime? time = null;
         bool inPoint = false;
-        while (reader.Read())
+
+        reader.MoveToContent();
+        while (!reader.EOF)
         {
-            if (reader.NodeType == XmlNodeType.Element && reader.LocalName == "trkpt")
+            if (reader.NodeType == XmlNodeType.Element)
             {
-                inPoint = TryLatLon(reader, out lat, out lon);
-            }
-            else if (inPoint && reader.NodeType == XmlNodeType.Element && reader.LocalName == "time")
-            {
-                var text = reader.ReadElementContentAsString();
-                if (DateTime.TryParse(text, CultureInfo.InvariantCulture,
-                        DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var utc))
+                switch (reader.LocalName)
                 {
-                    result.Add(new TimedPoint(lat, lon, utc));
+                    case "trkpt":
+                        inPoint = TryLatLon(reader, out lat, out lon) && !reader.IsEmptyElement;
+                        ele = null;
+                        time = null;
+                        break;
+                    case "ele" when inPoint:
+                        // ReadElementContentAsString steht danach schon auf dem nächsten Knoten
+                        ele = double.TryParse(reader.ReadElementContentAsString(), NumberStyles.Float,
+                                              CultureInfo.InvariantCulture, out var e) ? e : null;
+                        continue;
+                    case "time" when inPoint:
+                        time = DateTime.TryParse(reader.ReadElementContentAsString(), CultureInfo.InvariantCulture,
+                                   DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var t) ? t : null;
+                        continue;
                 }
-                inPoint = false;
             }
             else if (reader.NodeType == XmlNodeType.EndElement && reader.LocalName == "trkpt")
             {
+                if (inPoint && time is DateTime utc) result.Add(new TimedPoint(lat, lon, utc, ele));
                 inPoint = false;
             }
+            reader.Read();
         }
         result.Sort((a, b) => a.Utc.CompareTo(b.Utc));
         return result;

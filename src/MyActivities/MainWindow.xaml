@@ -4,8 +4,6 @@
                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
                  xmlns:views="clr-namespace:MyActivities.Views"
                  Title="My Activities"
-                 Width="1200" Height="800"
-                 WindowStartupLocation="CenterScreen"
                  ExtendsContentIntoTitleBar="True"
                  WindowBackdropType="Mica"
                  WindowCornerPreference="Round">
@@ -28,10 +26,12 @@
                                        TargetPageType="{x:Type views:StatistikPage}" />
                 <ui:NavigationViewItem Content="Aktivitäten"
                                        Icon="{ui:SymbolIcon Table24}"
-                                       TargetPageType="{x:Type views:AktivitaetenPage}" />
+                                       TargetPageType="{x:Type views:AktivitaetenPage}"
+                                       NavigationCacheMode="Enabled" />
                 <ui:NavigationViewItem Content="Karte"
                                        Icon="{ui:SymbolIcon Map24}"
-                                       TargetPageType="{x:Type views:KartePage}" />
+                                       TargetPageType="{x:Type views:KartePage}"
+                                       NavigationCacheMode="Enabled" />
             </ui:NavigationView.MenuItems>
             <ui:NavigationView.FooterMenuItems>
                 <ui:NavigationViewItem Content="Einstellungen"

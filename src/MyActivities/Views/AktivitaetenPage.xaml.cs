@@ -23,6 +23,9 @@ public partial class AktivitaetenPage : Page
         (Stats.SkiTypes, false),
     ];
 
+    /// <summary>Beim nächsten Anzeigen auszuwählende Tour (z. B. "Details anzeigen" auf der Karte).</summary>
+    public static long? PendingSelection { get; set; }
+
     private List<Activity> _all = [];
     private ICollectionView? _view;
     private bool _updatingFilters;
@@ -31,6 +34,7 @@ public partial class AktivitaetenPage : Page
     private Activity? _selected;
     private string? _mapScript;   // zuletzt angezeigter Inhalt der Karte (für die große Karte)
     private List<TourPhoto> _photos = [];
+    private List<KeyValuePair<string, string>> _detailLines = [];
 
     public AktivitaetenPage()
     {
@@ -39,6 +43,7 @@ public partial class AktivitaetenPage : Page
         {
             LoadData();
             _mapInit ??= InitMapAsync();
+            SelectPending();
         };
     }
 
@@ -66,6 +71,23 @@ public partial class AktivitaetenPage : Page
         _updatingFilters = false;
 
         UpdateSummary();
+    }
+
+    private void SelectPending()
+    {
+        BackToMapButton.Visibility = PendingSelection is null ? Visibility.Collapsed : Visibility.Visible;
+        if (PendingSelection is not long id) return;
+        PendingSelection = null;
+        if (_all.FirstOrDefault(a => a.Id == id) is not Activity a) return;
+        Table.SelectedItem = a;   // löst Details, Karte und Fotos aus
+        Table.ScrollIntoView(a);
+        Table.Focus();
+    }
+
+    private void OnBackToMapClick(object sender, RoutedEventArgs e)
+    {
+        BackToMapButton.Visibility = Visibility.Collapsed;
+        (Window.GetWindow(this) as MainWindow)?.ShowMap();
     }
 
     private bool Matches(object item)
@@ -179,6 +201,7 @@ public partial class AktivitaetenPage : Page
         if (a.AvgHr is double hr) lines.Add(new("Ø Puls", $"{hr:N0} bpm"));
         if (a.Calories is double kcal) lines.Add(new("Kalorien", $"{kcal:N0} kcal"));
         lines.Add(new("Aktivitäts-ID", a.Id.ToString()));
+        _detailLines = lines;
         DetailList.ItemsSource = lines;
 
         GarminButton.Visibility = Visibility.Visible;
@@ -223,78 +246,38 @@ public partial class AktivitaetenPage : Page
         PhotoList.ItemsSource = null;
         PhotoPanel.Visibility = Visibility.Collapsed;
 
-        // Track und Fotos parallel laden
-        var photosTask = AppServices.Photos.PhotosForAsync(a);
-        var track = TrackData.Empty;
-        string? trackError = null;
-        try
-        {
-            track = await AppServices.Tracks.LoadAsync(a.Id);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or XmlException)
-        {
-            trackError = ex.Message;
-        }
-
-        List<TourPhoto> photos;
-        try
-        {
-            photos = await photosTask;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            photos = [];
-        }
-
+        var result = await TourMap.BuildAsync(a);
         if (_mapInit is not null) await _mapInit;
         if (request != _trackRequest) return;   // inzwischen andere Aktivität gewählt
 
-        // Fotos auf der Karte platzieren (Dateiname = Ortszeit, GPX = UTC)
-        var offset = PhotoPlacement.LocalOffset(a.Start, track.Timeline);
-        foreach (var photo in photos)
-        {
-            DateTime? takenUtc = offset is TimeSpan o ? photo.Taken - o : null;
-            photo.MapPosition = PhotoPlacement.PhotoPosition(photo.Gps, takenUtc, track.Points, track.Timeline);
-        }
+        await Map.ExecuteScriptAsync(result.Script);
+        _mapScript = result.Script;
+        EnlargeButton.IsEnabled = result.HasContent;
+        TrackStatus.Text = result.Status;
 
-        string script;
-        if (track.Points.Count >= 2)
-        {
-            script = $"showTrack({JsonSerializer.Serialize(track.Points.Select(p => new[] { p.Lat, p.Lon }))})";
-            TrackStatus.Text = "";
-        }
-        else if (a.StartLat is double lat && a.StartLon is double lon)
-        {
-            script = $"showPoint({lat.ToString(CultureInfo.InvariantCulture)}, {lon.ToString(CultureInfo.InvariantCulture)})";
-            TrackStatus.Text = trackError is null
-                ? "Kein GPS-Track vorhanden – Startpunkt angezeigt."
-                : $"Track konnte nicht geladen werden: {trackError}";
-        }
-        else
-        {
-            script = "clearTrack()";
-            TrackStatus.Text = trackError is null ? "Kein GPS-Track vorhanden." : $"Track konnte nicht geladen werden: {trackError}";
-        }
+        _photos = result.Photos;
+        var stripTask = ShowPhotoStripAsync(result.Photos, request);
+        await ShowPowerAsync(a, result.Track, request);
+        await stripTask;
+    }
 
-        var markers = photos
-            .Select((photo, index) => (photo, index))
-            .Where(x => x.photo.MapPosition is not null)
-            .Select(x => new
-            {
-                i = x.index,
-                lat = x.photo.MapPosition!.Value.Lat,
-                lon = x.photo.MapPosition!.Value.Lon,
-                url = AppServices.Photos.MapUrl(x.photo),
-            })
-            .ToList();
-        if (markers.Count > 0) script += $"; showPhotos({JsonSerializer.Serialize(markers)})";
+    /// <summary>Radfahren: geschätzte beste Leistung am Berg (5/10/20 min) aus dem GPX unter den Details.</summary>
+    private async Task ShowPowerAsync(Activity a, TrackData track, int request)
+    {
+        if (!Stats.CyclingTypes.Contains(a.TypeKey) || Stats.IsIndoor(a.TypeKey, a.Name) || track.Timeline.Count < 2) return;
 
-        await Map.ExecuteScriptAsync(script);
-        _mapScript = script;
-        EnlargeButton.IsEnabled = script != "clearTrack()";
+        var powers = await Task.Run(() => Power.BestPowers(track.Timeline, a.TypeKey));
+        if (request != _trackRequest) return;
 
-        _photos = photos;
-        await ShowPhotoStripAsync(photos, request);
+        var lines = new List<KeyValuePair<string, string>>(_detailLines);
+        var found = Power.WindowsS.Zip(powers).Where(x => x.Second is not null).ToList();
+        lines.Add(new("Leistung am Berg (geschätzt)", found.Count == 0 ? "kein Anstieg" : ""));
+        foreach (var (window, watt) in found)
+        {
+            lines.Add(new($"   Beste {window / 60} min", $"{watt:N0} W"));
+        }
+        _detailLines = lines;
+        DetailList.ItemsSource = lines;
     }
 
     /// <summary>Vorschaustreifen füllen; Vorschaubilder werden nacheinander im Hintergrund geladen.</summary>

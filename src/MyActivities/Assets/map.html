@@ -4,8 +4,17 @@
 <meta charset="utf-8">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <style>
   html, body, #map { height: 100%; margin: 0; }
+  .legend { background: rgba(255,255,255,.9); padding: 6px 10px; border-radius: 6px;
+            font: 13px "Segoe UI", sans-serif; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+  .legend span { display: inline-block; width: 11px; height: 11px; border-radius: 50%;
+                 margin-right: 6px; vertical-align: -1px; border: 1px solid #fff; }
+  .leaflet-popup-content { font: 13px "Segoe UI", sans-serif; }
+  .leaflet-popup-content a.details { display: inline-block; margin-top: 6px; font-weight: 600; }
   .leaflet-container .leaflet-marker-pane .photo-icon {
     background: transparent; border: none;
   }
@@ -26,10 +35,18 @@
   const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19, attribution: '© OpenStreetMap-Mitwirkende'
   });
+  const swiss = L.tileLayer('https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-farbe/default/current/3857/{z}/{x}/{y}.jpeg', {
+    maxZoom: 18, attribution: '© swisstopo'
+  });
   const map = L.map('map', { layers: [osm] }).setView([47.4, 8.5], 8);
-  L.control.layers({ 'Karte': osm, 'Topo': topo }).addTo(map);
+  L.control.layers({ 'Karte': osm, 'Topo': topo, 'Landeskarte (CH)': swiss }).addTo(map);
 
+  const post = msg => window.chrome.webview.postMessage(JSON.stringify(msg));
+
+  // Reihenfolge: geöffnete Tracks unten, ausgewählte Tour (overlay) darüber
+  const tracksLayer = L.layerGroup().addTo(map);
   let overlay = L.layerGroup().addTo(map);
+  const bringOverlayToFront = () => overlay.eachLayer(l => l.bringToFront && l.bringToFront());
 
   function clearTrack() {
     overlay.clearLayers();
@@ -40,7 +57,8 @@
     map.invalidateSize();
     clearTrack();
     if (!points || points.length < 2) return;
-    const line = L.polyline(points, { color: '#e4572e', weight: 4 }).addTo(overlay);
+    L.polyline(points, { color: '#fff', weight: 7, opacity: 0.8, interactive: false }).addTo(overlay);
+    const line = L.polyline(points, { color: '#e53935', weight: 4.5 }).addTo(overlay);
     L.circleMarker(points[0], { radius: 6, color: '#fff', weight: 2, fillColor: '#2a9d8f', fillOpacity: 1 }).addTo(overlay);
     L.circleMarker(points[points.length - 1], { radius: 6, color: '#fff', weight: 2, fillColor: '#e63946', fillOpacity: 1 }).addTo(overlay);
     map.fitBounds(line.getBounds(), { padding: [20, 20] });
@@ -52,9 +70,82 @@
       const icon = L.divIcon({ className: 'photo-icon', html: `<img src="${p.url}" loading="lazy">`,
                                iconSize: [44, 44], iconAnchor: [22, 22] });
       L.marker([p.lat, p.lon], { icon: icon, zIndexOffset: 1000 })
-        .on('click', () => window.chrome.webview.postMessage(JSON.stringify({ photo: p.i })))
+        .on('click', () => post({ photo: p.i }))
         .addTo(overlay);
     });
+  }
+
+  // ---- Weltkarte: Startpunkte aller Touren
+  let starts = null;
+  let startsData = [];
+  let openedIds = new Set();
+
+  // Meldet der App, wie viele Touren im Ausschnitt liegen (und wie viele davon noch nicht geöffnet sind)
+  function reportView() {
+    if (!startsData.length && !openedIds.size) return;
+    const b = map.getBounds();
+    const inView = startsData.filter(a => b.contains([a.lat, a.lon]));
+    post({ view: { count: inView.length, closed: inView.filter(a => !openedIds.has(String(a.id))).length, zoom: map.getZoom() } });
+  }
+  map.on('moveend', reportView);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  // list: [{ id, lat, lon, c: Farbe, n: Name, d: Datum, t: Typ, info: "12,3 km · 456 Hm · 2:10" }, ...]
+  // bounds: [[lat1, lon1], [lat2, lon2]] oder null (Ausschnitt nicht ändern)
+  function showStarts(list, bounds) {
+    if (starts) map.removeLayer(starts);
+    startsData = list || [];
+    starts = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 40 });
+    // Einzelne Tour sieht aus wie eine Gruppe mit "1" (gleicher grüner Kreis)
+    const single = L.divIcon({ html: '<div><span>1</span></div>', className: 'marker-cluster marker-cluster-small',
+                               iconSize: L.point(40, 40) });
+    (list || []).forEach(a => {
+      const m = L.marker([a.lat, a.lon], { icon: single });
+      m.bindPopup(`<b>${esc(a.n)}</b><br>${esc(a.d)} · ${esc(a.t)}<br>${esc(a.info)}` +
+                  `<br><a href="#" class="details" onclick="post({ details: '${a.id}' }); return false;">Details anzeigen</a>`);
+      m.on('click', () => post({ select: a.id }));
+      starts.addLayer(m);
+    });
+    map.addLayer(starts);
+    if (bounds) fitArea(bounds);
+    reportView();
+  }
+
+  function fitArea(bounds) {
+    map.invalidateSize();
+    map.fitBounds(bounds, { padding: [30, 30], maxZoom: 13 });
+  }
+
+  // IDs der Startpunkte im sichtbaren Kartenausschnitt
+  function startsInView() {
+    const b = map.getBounds();
+    // als Text, damit die langen IDs unverändert in C# ankommen
+    return startsData.filter(a => b.contains([a.lat, a.lon])).map(a => String(a.id));
+  }
+
+  // Geöffnete Tracks: [{ id, p: [[lat, lon], ...] }, ...]; Klick wählt die Tour aus
+  function showTracks(list) {
+    tracksLayer.clearLayers();
+    openedIds = new Set((list || []).map(t => String(t.id)));
+    (list || []).forEach(t => {
+      L.polyline(t.p, { color: '#fff', weight: 6, opacity: 0.7, interactive: false }).addTo(tracksLayer);
+      L.polyline(t.p, { color: '#7b1fa2', weight: 3.5 }).on('click', () => post({ select: t.id })).addTo(tracksLayer);
+    });
+    bringOverlayToFront();
+    reportView();
+  }
+
+  // items: [{ c: Farbe, l: Bezeichnung }, ...]
+  let legend = null;
+  function setLegend(items) {
+    if (legend) legend.remove();
+    legend = L.control({ position: 'bottomleft' });
+    legend.onAdd = () => {
+      const div = L.DomUtil.create('div', 'legend');
+      div.innerHTML = items.map(i => `<div><span style="background:${i.c}"></span>${esc(i.l)}</div>`).join('');
+      return div;
+    };
+    legend.addTo(map);
   }
 
   function showPoint(lat, lon) {

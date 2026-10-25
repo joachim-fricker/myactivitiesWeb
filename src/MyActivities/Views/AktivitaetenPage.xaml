@@ -20,6 +20,8 @@
 
         <!-- Kopf mit Filtern -->
         <WrapPanel Grid.Row="0" Grid.ColumnSpan="3" Orientation="Horizontal">
+            <ui:Button x:Name="BackToMapButton" Margin="0,0,16,0" Content="Zurück zur Karte"
+                       Icon="{ui:SymbolIcon ArrowLeft24}" Visibility="Collapsed" Click="OnBackToMapClick" />
             <ui:TextBlock Text="Aktivitäten" FontTypography="Title" VerticalAlignment="Center" Margin="0,0,24,0" />
             <ComboBox x:Name="QuickBox" Width="140" Margin="0,0,8,0" SelectedIndex="0"
                       SelectionChanged="OnQuickChanged">
@@ -121,7 +123,7 @@
             <!-- Fotos zur Tour -->
             <StackPanel x:Name="PhotoPanel" Grid.Row="4" Margin="0,8,0,0" Visibility="Collapsed">
                 <ui:TextBlock x:Name="PhotoHeader" FontTypography="BodyStrong" Margin="0,0,0,4" />
-                <ListBox x:Name="PhotoList" Height="96"
+                <ListBox x:Name="PhotoList" Height="104" Padding="0,0,0,14"
                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
                          ScrollViewer.VerticalScrollBarVisibility="Disabled"
                          PreviewMouseLeftButtonUp="OnPhotoClick" KeyDown="OnPhotoKeyDown">
@@ -149,7 +151,6 @@
             </StackPanel>
 
             <ui:Card Grid.Row="5" Margin="0,8,0,0" Padding="12,8">
-            <ScrollViewer MaxHeight="180" VerticalScrollBarVisibility="Auto">
                 <ItemsControl x:Name="DetailList">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
@@ -165,7 +166,6 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-            </ScrollViewer>
             </ui:Card>
 
             <ui:Button x:Name="GarminButton" Grid.Row="6" Margin="0,12,0,0" Visibility="Collapsed"

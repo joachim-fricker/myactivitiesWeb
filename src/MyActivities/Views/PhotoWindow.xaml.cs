@@ -46,7 +46,9 @@ public partial class PhotoWindow : FluentWindow
         int request = ++_loadRequest;
         Title = $"{_tourName} – Foto {_index + 1} / {_photos.Count}";
         AppTitleBar.Title = Title;
-        Caption.Text = $"{photo.Taken:dd.MM.yyyy HH:mm:ss} · {System.IO.Path.GetFileName(photo.Path)}";
+        Caption.Text = photo.TourName is null
+            ? $"{photo.Taken:dd.MM.yyyy HH:mm:ss} · {System.IO.Path.GetFileName(photo.Path)}"
+            : $"{photo.TourName} · {photo.Taken:HH:mm} · {System.IO.Path.GetFileName(photo.Path)}";
         PrevButton.IsEnabled = _index > 0;
         NextButton.IsEnabled = _index < _photos.Count - 1;
 

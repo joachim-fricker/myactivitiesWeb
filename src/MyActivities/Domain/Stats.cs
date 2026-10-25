@@ -33,6 +33,28 @@ public static class Stats
 
     public static string TypeLabel(string typeKey) => Labels.TryGetValue(typeKey, out var l) ? l : typeKey;
 
+    /// <summary>
+    /// Indoor-/virtuelle Fahrt? Rouvy liefert GPS-Koordinaten der virtuellen Strecke mit,
+    /// deshalb zusätzlich am Namen erkennen.
+    /// </summary>
+    public static bool IsIndoor(string typeKey, string name) =>
+        typeKey is "virtual_ride" or "indoor_cycling" || name.Contains("rouvy", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Gruppe für Farben/Filter: Rad, Wandern, Skitour oder Sonstige.</summary>
+    public static string GroupOf(string typeKey) =>
+        CyclingTypes.Contains(typeKey) ? "Rad" :
+        HikingTypes.Contains(typeKey) ? "Wandern" :
+        SkiTypes.Contains(typeKey) ? "Skitour" : "Sonstige";
+
+    /// <summary>Farben der Gruppen auf der Karte (wie die Statistik: Category10).</summary>
+    public static readonly (string Group, string Color)[] GroupColors =
+    [
+        ("Rad", "#1f77b4"),
+        ("Wandern", "#2ca02c"),
+        ("Skitour", "#9467bd"),
+        ("Sonstige", "#7f7f7f"),
+    ];
+
     /// <summary>Wandern (ohne Laufen): hier interessiert keine Geschwindigkeit.</summary>
     private static readonly HashSet<string> NoSpeedTypes = ["walking", "hiking", "mountaineering"];
 
