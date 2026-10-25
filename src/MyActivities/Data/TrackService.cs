@@ -3,14 +3,19 @@ using MyActivities.Domain;
 
 namespace MyActivities.Data;
 
+/// <summary>Track für die Karte (vereinfacht) und Zeitachse (alle Punkte mit Zeit) einer Aktivität.</summary>
+public sealed record TrackData(List<GeoPoint> Points, List<TimedPoint> Timeline)
+{
+    public static readonly TrackData Empty = new([], []);
+}
+
 /// <summary>Lädt GPX-Tracks bei Bedarf von GitHub und hält sie lokal im Cache.</summary>
 public sealed class TrackService(GitHubClient client, string cacheFolder)
 {
     /// <summary>Mehr Punkte braucht die Karte nicht.</summary>
     private const int MaxPoints = 4000;
 
-    /// <summary>Track der Aktivität; leere Liste = kein GPS-Track vorhanden.</summary>
-    public async Task<List<GeoPoint>> LoadAsync(long id, CancellationToken ct = default)
+    public async Task<TrackData> LoadAsync(long id, CancellationToken ct = default)
     {
         Directory.CreateDirectory(cacheFolder);
         var path = Path.Combine(cacheFolder, $"{id}.gpx");
@@ -23,12 +28,11 @@ public sealed class TrackService(GitHubClient client, string cacheFolder)
         else
         {
             gpx = await client.FetchGpxAsync(id, ct);
-            if (gpx is null) return [];
+            if (gpx is null) return TrackData.Empty;
             await File.WriteAllTextAsync(path, gpx, ct);
         }
 
-        var points = await Task.Run(() => GpxParser.Parse(gpx), ct);
-        return Downsample(points);
+        return await Task.Run(() => new TrackData(Downsample(GpxParser.Parse(gpx)), GpxParser.ParseTimed(gpx)), ct);
     }
 
     private static List<GeoPoint> Downsample(List<GeoPoint> points)

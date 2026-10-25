@@ -20,6 +20,8 @@ public static class AppServices
 
     public static TrackService Tracks { get; } = new(GitHub, Path.Combine(DataFolder, "gpx"));
 
+    public static PhotoService Photos { get; } = new(PhotoFolder);
+
     private static Task<CoreWebView2Environment>? _webViewEnvironment;
 
     /// <summary>Gemeinsame WebView2-Umgebung für alle Karten (Daten unter DataFolder\WebView2).</summary>

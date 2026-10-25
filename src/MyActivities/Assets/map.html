@@ -6,6 +6,15 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   html, body, #map { height: 100%; margin: 0; }
+  .leaflet-container .leaflet-marker-pane .photo-icon {
+    background: transparent; border: none;
+  }
+  /* Leaflet setzt für Bilder in Markern width:auto – hier fest quadratisch, damit ein Kreis entsteht */
+  .leaflet-container .leaflet-marker-pane .photo-icon img {
+    width: 40px !important; height: 40px !important; box-sizing: border-box;
+    object-fit: cover; border-radius: 50%;
+    border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.5); background: #ddd;
+  }
 </style>
 </head>
 <body>
@@ -35,6 +44,17 @@
     L.circleMarker(points[0], { radius: 6, color: '#fff', weight: 2, fillColor: '#2a9d8f', fillOpacity: 1 }).addTo(overlay);
     L.circleMarker(points[points.length - 1], { radius: 6, color: '#fff', weight: 2, fillColor: '#e63946', fillOpacity: 1 }).addTo(overlay);
     map.fitBounds(line.getBounds(), { padding: [20, 20] });
+  }
+
+  // photos: [{ i: Index, lat, lon, url }, ...]; Klick meldet den Index an die App
+  function showPhotos(photos) {
+    (photos || []).forEach(p => {
+      const icon = L.divIcon({ className: 'photo-icon', html: `<img src="${p.url}" loading="lazy">`,
+                               iconSize: [44, 44], iconAnchor: [22, 22] });
+      L.marker([p.lat, p.lon], { icon: icon, zIndexOffset: 1000 })
+        .on('click', () => window.chrome.webview.postMessage(JSON.stringify({ photo: p.i })))
+        .addTo(overlay);
+    });
   }
 
   function showPoint(lat, lon) {

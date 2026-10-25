@@ -30,6 +30,7 @@ public partial class AktivitaetenPage : Page
     private int _trackRequest;
     private Activity? _selected;
     private string? _mapScript;   // zuletzt angezeigter Inhalt der Karte (für die große Karte)
+    private List<TourPhoto> _photos = [];
 
     public AktivitaetenPage()
     {
@@ -142,7 +143,7 @@ public partial class AktivitaetenPage : Page
         if (Table.SelectedItem is not Activity a) return;
         _selected = a;
         ShowDetails(a);
-        await ShowTrackAsync(a);
+        await ShowMapAndPhotosAsync(a);
     }
 
     private void ShowDetails(Activity a)
@@ -192,59 +193,145 @@ public partial class AktivitaetenPage : Page
         });
     }
 
-    // ------------------------------------------------------------------ Karte
+    // ------------------------------------------------------------------ Karte & Fotos
 
-    private Task InitMapAsync() => MapHost.InitAsync(Map);
+    private async Task InitMapAsync()
+    {
+        await MapHost.InitAsync(Map);
+        Map.WebMessageReceived += (_, e) =>
+        {
+            if (MapHost.PhotoIndex(e) is int index) OpenPhoto(index);
+        };
+    }
 
     private void OnEnlargeClick(object sender, RoutedEventArgs e)
     {
         if (_mapScript is null || _selected is null) return;
-        new MapWindow($"{_selected.Name} · {_selected.Start:dd.MM.yyyy}", _mapScript)
+        new MapWindow($"{_selected.Name} · {_selected.Start:dd.MM.yyyy}", _mapScript, _photos)
         {
             Owner = Window.GetWindow(this),
         }.Show();
     }
 
-    private async Task ShowTrackAsync(Activity a)
+    private async Task ShowMapAndPhotosAsync(Activity a)
     {
         int request = ++_trackRequest;
-        TrackStatus.Text = "Lade Track …";
+        TrackStatus.Text = "Lade Track und Fotos …";
         _mapScript = null;
         EnlargeButton.IsEnabled = false;
+        _photos = [];
+        PhotoList.ItemsSource = null;
+        PhotoPanel.Visibility = Visibility.Collapsed;
+
+        // Track und Fotos parallel laden
+        var photosTask = AppServices.Photos.PhotosForAsync(a);
+        var track = TrackData.Empty;
+        string? trackError = null;
         try
         {
-            if (_mapInit is not null) await _mapInit;
-            var points = await AppServices.Tracks.LoadAsync(a.Id);
-            if (request != _trackRequest) return;   // inzwischen andere Aktivität gewählt
-
-            if (points.Count >= 2)
-            {
-                var json = JsonSerializer.Serialize(points.Select(p => new[] { p.Lat, p.Lon }));
-                await ShowOnMapAsync($"showTrack({json})");
-                TrackStatus.Text = "";
-            }
-            else if (a.StartLat is double lat && a.StartLon is double lon)
-            {
-                await ShowOnMapAsync(
-                    $"showPoint({lat.ToString(CultureInfo.InvariantCulture)}, {lon.ToString(CultureInfo.InvariantCulture)})");
-                TrackStatus.Text = "Kein GPS-Track vorhanden – Startpunkt angezeigt.";
-            }
-            else
-            {
-                await Map.ExecuteScriptAsync("clearTrack()");
-                TrackStatus.Text = "Kein GPS-Track vorhanden.";
-            }
+            track = await AppServices.Tracks.LoadAsync(a.Id);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or XmlException)
         {
-            if (request == _trackRequest) TrackStatus.Text = $"Track konnte nicht geladen werden: {ex.Message}";
+            trackError = ex.Message;
+        }
+
+        List<TourPhoto> photos;
+        try
+        {
+            photos = await photosTask;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            photos = [];
+        }
+
+        if (_mapInit is not null) await _mapInit;
+        if (request != _trackRequest) return;   // inzwischen andere Aktivität gewählt
+
+        // Fotos auf der Karte platzieren (Dateiname = Ortszeit, GPX = UTC)
+        var offset = PhotoPlacement.LocalOffset(a.Start, track.Timeline);
+        foreach (var photo in photos)
+        {
+            DateTime? takenUtc = offset is TimeSpan o ? photo.Taken - o : null;
+            photo.MapPosition = PhotoPlacement.PhotoPosition(photo.Gps, takenUtc, track.Points, track.Timeline);
+        }
+
+        string script;
+        if (track.Points.Count >= 2)
+        {
+            script = $"showTrack({JsonSerializer.Serialize(track.Points.Select(p => new[] { p.Lat, p.Lon }))})";
+            TrackStatus.Text = "";
+        }
+        else if (a.StartLat is double lat && a.StartLon is double lon)
+        {
+            script = $"showPoint({lat.ToString(CultureInfo.InvariantCulture)}, {lon.ToString(CultureInfo.InvariantCulture)})";
+            TrackStatus.Text = trackError is null
+                ? "Kein GPS-Track vorhanden – Startpunkt angezeigt."
+                : $"Track konnte nicht geladen werden: {trackError}";
+        }
+        else
+        {
+            script = "clearTrack()";
+            TrackStatus.Text = trackError is null ? "Kein GPS-Track vorhanden." : $"Track konnte nicht geladen werden: {trackError}";
+        }
+
+        var markers = photos
+            .Select((photo, index) => (photo, index))
+            .Where(x => x.photo.MapPosition is not null)
+            .Select(x => new
+            {
+                i = x.index,
+                lat = x.photo.MapPosition!.Value.Lat,
+                lon = x.photo.MapPosition!.Value.Lon,
+                url = AppServices.Photos.MapUrl(x.photo),
+            })
+            .ToList();
+        if (markers.Count > 0) script += $"; showPhotos({JsonSerializer.Serialize(markers)})";
+
+        await Map.ExecuteScriptAsync(script);
+        _mapScript = script;
+        EnlargeButton.IsEnabled = script != "clearTrack()";
+
+        _photos = photos;
+        await ShowPhotoStripAsync(photos, request);
+    }
+
+    /// <summary>Vorschaustreifen füllen; Vorschaubilder werden nacheinander im Hintergrund geladen.</summary>
+    private async Task ShowPhotoStripAsync(List<TourPhoto> photos, int request)
+    {
+        PhotoPanel.Visibility = Visibility.Visible;
+        PhotoHeader.Text = photos.Count == 0 ? "Keine Fotos zu dieser Tour" : $"Fotos ({photos.Count})";
+        PhotoList.Visibility = photos.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        PhotoList.ItemsSource = photos;
+
+        foreach (var photo in photos)
+        {
+            if (request != _trackRequest) return;
+            photo.Thumb ??= await Task.Run(() => PhotoService.LoadImage(photo.Path, 240, photo.Orientation));
         }
     }
 
-    private async Task ShowOnMapAsync(string script)
+    private void OnPhotoClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
-        await Map.ExecuteScriptAsync(script);
-        _mapScript = script;
-        EnlargeButton.IsEnabled = true;
+        // Angeklicktes Vorschaubild bestimmen (nicht die Scrollleiste)
+        if (ItemsControl.ContainerFromElement(PhotoList, (DependencyObject)e.OriginalSource) is ListBoxItem item)
+        {
+            OpenPhoto(PhotoList.ItemContainerGenerator.IndexFromContainer(item));
+        }
+    }
+
+    private void OnPhotoKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Enter && PhotoList.SelectedIndex >= 0) OpenPhoto(PhotoList.SelectedIndex);
+    }
+
+    private void OpenPhoto(int index)
+    {
+        if (index < 0 || index >= _photos.Count) return;
+        new PhotoWindow(_photos, index, _selected?.Name ?? "Foto")
+        {
+            Owner = Window.GetWindow(this),
+        }.Show();
     }
 }

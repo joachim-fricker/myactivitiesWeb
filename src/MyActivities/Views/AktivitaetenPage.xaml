@@ -71,6 +71,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <StackPanel Grid.Row="0">
@@ -117,8 +118,38 @@
                            Click="OnEnlargeClick" />
             </Grid>
 
-            <ui:Card Grid.Row="4" Margin="0,8,0,0" Padding="12,8">
-            <ScrollViewer MaxHeight="230" VerticalScrollBarVisibility="Auto">
+            <!-- Fotos zur Tour -->
+            <StackPanel x:Name="PhotoPanel" Grid.Row="4" Margin="0,8,0,0" Visibility="Collapsed">
+                <ui:TextBlock x:Name="PhotoHeader" FontTypography="BodyStrong" Margin="0,0,0,4" />
+                <ListBox x:Name="PhotoList" Height="96"
+                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                         ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                         PreviewMouseLeftButtonUp="OnPhotoClick" KeyDown="OnPhotoKeyDown">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <VirtualizingStackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                            <Setter Property="Padding" Value="2" />
+                            <Setter Property="Margin" Value="0,0,4,0" />
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border Width="112" Height="76" CornerRadius="4" ClipToBounds="True"
+                                    Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                                    ToolTip="{Binding Taken, StringFormat=HH:mm}">
+                                <Image Source="{Binding Thumb}" Stretch="UniformToFill" />
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </StackPanel>
+
+            <ui:Card Grid.Row="5" Margin="0,8,0,0" Padding="12,8">
+            <ScrollViewer MaxHeight="180" VerticalScrollBarVisibility="Auto">
                 <ItemsControl x:Name="DetailList">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
@@ -137,7 +168,7 @@
             </ScrollViewer>
             </ui:Card>
 
-            <ui:Button x:Name="GarminButton" Grid.Row="5" Margin="0,12,0,0" Visibility="Collapsed"
+            <ui:Button x:Name="GarminButton" Grid.Row="6" Margin="0,12,0,0" Visibility="Collapsed"
                        Content="In Garmin Connect öffnen" Icon="{ui:SymbolIcon Open24}"
                        Click="OnGarminClick" />
         </Grid>
