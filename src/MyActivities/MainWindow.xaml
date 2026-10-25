@@ -29,6 +29,10 @@
                                        Icon="{ui:SymbolIcon Map24}"
                                        TargetPageType="{x:Type views:KartePage}"
                                        NavigationCacheMode="Enabled" />
+                <ui:NavigationViewItem Content="Heatmap"
+                                       Icon="{ui:SymbolIcon Fire24}"
+                                       TargetPageType="{x:Type views:HeatmapPage}"
+                                       NavigationCacheMode="Enabled" />
                 <ui:NavigationViewItem Content="Kalender"
                                        Icon="{ui:SymbolIcon CalendarLtr24}"
                                        TargetPageType="{x:Type views:KalenderPage}"

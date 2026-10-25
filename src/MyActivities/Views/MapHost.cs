@@ -54,6 +54,26 @@ public static class MapHost
         }
     }
 
+    /// <summary>Heatmap: IDs der Touren, die am angeklickten Punkt vorbeiführen; tooFar = zu weit herausgezoomt.</summary>
+    public static (List<long> Ids, bool TooFar)? NearIds(CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(e.TryGetWebMessageAsString());
+            if (!doc.RootElement.TryGetProperty("near", out var near)) return null;
+            var ids = near.EnumerateArray()
+                .Select(v => long.TryParse(v.GetString(), out var id) ? id : 0)
+                .Where(id => id != 0)
+                .ToList();
+            bool tooFar = doc.RootElement.TryGetProperty("tooFar", out var tf) && tf.GetBoolean();
+            return (ids, tooFar);
+        }
+        catch (Exception ex) when (ex is JsonException or ArgumentException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Zahl unter key aus einer JSON-Nachricht von map.html, z. B. {"photo": 3}.</summary>
     private static long? MessageValue(CoreWebView2WebMessageReceivedEventArgs e, string key)
     {

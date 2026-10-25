@@ -24,6 +24,8 @@ public static class AppServices
 
     public static PowerService Power { get; } = new(Db, Tracks);
 
+    public static HeatService Heat { get; } = new(Tracks);
+
     private static Task<CoreWebView2Environment>? _webViewEnvironment;
 
     /// <summary>Gemeinsame WebView2-Umgebung für alle Karten (Daten unter DataFolder\WebView2).</summary>

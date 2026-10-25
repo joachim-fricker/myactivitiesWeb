@@ -7,8 +7,11 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 <style>
   html, body, #map { height: 100%; margin: 0; }
+  /* Heatmap: Grundkarte entsättigt, damit die Farben hervorstechen */
+  body.heat-mode .leaflet-tile-pane { filter: saturate(0.15); opacity: 0.85; }
   .legend { background: rgba(255,255,255,.9); padding: 6px 10px; border-radius: 6px;
             font: 13px "Segoe UI", sans-serif; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
   .legend span { display: inline-block; width: 11px; height: 11px; border-radius: 50%;
@@ -147,6 +150,84 @@
     };
     legend.addTo(map);
   }
+
+  // ---- Heatmap aller Tracks
+  const canvasRenderer = L.canvas({ padding: 0.5 });
+  let heatLayer = null, heatLines = null, heatTracks = [];
+  const HEAT_LINES_FROM_ZOOM = 12;   // ab hier einzelne Linien statt Heatmap
+  const HEAT_CLICK_FROM_ZOOM = 11;   // ab hier zeigt ein Klick die Touren dort
+
+  // Punkte alle stepM Meter entlang des Tracks (gleichmäßige Dichte für die Heatmap)
+  function resample(pts, stepM) {
+    const out = [pts[0]];
+    let carry = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const a = L.latLng(pts[i - 1]), b = L.latLng(pts[i]);
+      const d = a.distanceTo(b);
+      let pos = stepM - carry;
+      while (pos <= d) {
+        const f = pos / d;
+        out.push([a.lat + f * (b.lat - a.lat), a.lng + f * (b.lng - a.lng)]);
+        pos += stepM;
+      }
+      carry = d - (pos - stepM);
+    }
+    return out;
+  }
+
+  function heatRadius(z) { return z < 6 ? 3 : z < 9 ? 5 : z < 11 ? 7 : 10; }
+
+  function updateHeatZoom() {
+    if (!heatLayer) return;
+    const z = map.getZoom();
+    const showLines = z >= HEAT_LINES_FROM_ZOOM;
+    if (showLines) { map.removeLayer(heatLayer); if (!map.hasLayer(heatLines)) heatLines.addTo(map); }
+    else { map.removeLayer(heatLines); if (!map.hasLayer(heatLayer)) heatLayer.addTo(map); heatLayer.setOptions({ radius: heatRadius(z), blur: heatRadius(z) * 1.3 }); }
+  }
+  map.on('zoomend', updateHeatZoom);
+
+  // tracks: [{ id: "123", p: [[lat, lon], ...] }, ...]; bounds wie bei showStarts
+  function showHeat(tracks, bounds) {
+    document.body.classList.add('heat-mode');
+    if (heatLayer) map.removeLayer(heatLayer);
+    if (heatLines) map.removeLayer(heatLines);
+    heatTracks = (tracks || []).filter(t => t.p && t.p.length >= 2);
+    heatTracks.forEach(t => t.b = L.latLngBounds(t.p).pad(0.05));
+
+    const pts = [];
+    heatTracks.forEach(t => resample(t.p, 250).forEach(q => pts.push([q[0], q[1], 0.5])));
+    heatLayer = L.heatLayer(pts, {
+      radius: 7, blur: 9, maxZoom: 12, minOpacity: 0.25,
+      gradient: { 0.1: '#4169e1', 0.3: '#00bedc', 0.5: '#78dc50', 0.7: '#ffd700', 0.9: '#ff7800', 1.0: '#dc1414' }
+    });
+    heatLines = L.layerGroup(heatTracks.map(t =>
+      L.polyline(t.p, { color: '#c62828', weight: 2.5, opacity: 0.35, interactive: false, renderer: canvasRenderer })));
+    if (bounds) fitArea(bounds);
+    updateHeatZoom();
+  }
+
+  // Klick (reingezoomt): welche Touren führen hier durch?
+  map.on('click', e => {
+    if (!heatTracks.length) return;
+    if (map.getZoom() < HEAT_CLICK_FROM_ZOOM) { post({ near: [], tooFar: true }); return; }
+    const p = map.latLngToLayerPoint(e.latlng);
+    const ids = [];
+    for (const t of heatTracks) {
+      if (!t.b.contains(e.latlng)) continue;
+      let prev = map.latLngToLayerPoint(t.p[0]);
+      for (let i = 1; i < t.p.length; i++) {
+        const cur = map.latLngToLayerPoint(t.p[i]);
+        if (L.LineUtil.pointToSegmentDistance(p, prev, cur) < 12) { ids.push(String(t.id)); break; }
+        prev = cur;
+      }
+    }
+    post({ near: ids });
+  });
+
+  // große Datenmengen kommen per PostWebMessageAsJson statt ExecuteScript
+  window.chrome.webview.addEventListener('message', e => {
+    if (e.data && e.data.heat) showHeat(e.data.heat, e.data.bounds);
+  });
 
   function showPoint(lat, lon) {
     map.invalidateSize();
