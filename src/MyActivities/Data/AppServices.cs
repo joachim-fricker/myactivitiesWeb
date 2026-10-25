@@ -26,6 +26,9 @@ public static class AppServices
 
     public static HeatService Heat { get; } = new(Tracks);
 
+    public static PhotoCountryService PhotoCountries { get; } = new(
+        Db, new CountryLookup(Path.Combine(AppContext.BaseDirectory, "Assets", "countries.geojson")), PhotoFolder);
+
     private static Task<CoreWebView2Environment>? _webViewEnvironment;
 
     /// <summary>Gemeinsame WebView2-Umgebung für alle Karten (Daten unter DataFolder\WebView2).</summary>

@@ -54,7 +54,11 @@ public partial class PhotoWindow : FluentWindow
 
         Picture.Source = photo.Thumb;   // sofort die Vorschau, dann das große Bild
         Busy.Visibility = Visibility.Visible;
-        var image = await Task.Run(() => PhotoService.LoadImage(photo.Path, 2560, photo.Orientation));
+        var image = await Task.Run(() =>
+        {
+            PhotoService.ReadMetadata(photo);
+            return PhotoService.LoadImage(photo.Path, 2560, photo.Orientation);
+        });
         if (request != _loadRequest) return;
         Busy.Visibility = Visibility.Collapsed;
         if (image is not null) Picture.Source = image;

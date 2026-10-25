@@ -11,6 +11,7 @@
 <style>
   html, body, #map { height: 100%; margin: 0; }
   /* Heatmap: Grundkarte entsättigt, damit die Farben hervorstechen */
+  body.country-mode #map { background: #cfe3ee; }
   body.heat-mode .leaflet-tile-pane { filter: saturate(0.15); opacity: 0.85; }
   .legend { background: rgba(255,255,255,.9); padding: 6px 10px; border-radius: 6px;
             font: 13px "Segoe UI", sans-serif; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
@@ -41,8 +42,10 @@
   const swiss = L.tileLayer('https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-farbe/default/current/3857/{z}/{x}/{y}.jpeg', {
     maxZoom: 18, attribution: '© swisstopo'
   });
-  const map = L.map('map', { layers: [osm] }).setView([47.4, 8.5], 8);
-  L.control.layers({ 'Karte': osm, 'Topo': topo, 'Landeskarte (CH)': swiss }).addTo(map);
+  // maxZoom fest setzen: ohne Grundkarte (Länderkarte) kennt Leaflet sonst keine Maximalstufe,
+  // und die Gruppierung (markercluster) verweigert den Dienst
+  const map = L.map('map', { layers: [osm], maxZoom: 19 }).setView([47.4, 8.5], 8);
+  const layersControl = L.control.layers({ 'Karte': osm, 'Topo': topo, 'Landeskarte (CH)': swiss }).addTo(map);
 
   const post = msg => window.chrome.webview.postMessage(JSON.stringify(msg));
 
@@ -227,7 +230,80 @@
   // große Datenmengen kommen per PostWebMessageAsJson statt ExecuteScript
   window.chrome.webview.addEventListener('message', e => {
     if (e.data && e.data.heat) showHeat(e.data.heat, e.data.bounds);
+    if (e.data && e.data.countryPhotos !== undefined) showCountryPhotos(e.data.countryPhotos);
   });
+
+  // ---- Länderkarte: besuchte Länder eingefärbt, ohne Grundkarte
+  let countryData = null, countryLayer = null, countryVisited = new Set(), countrySelected = null;
+
+  function countryStyle(f) {
+    const visited = countryVisited.has(f.properties.id);
+    const selected = f.properties.id === countrySelected;
+    return {
+      color: selected ? '#c62828' : '#ffffff', weight: selected ? 2.5 : 0.7,
+      fillColor: visited ? '#43a047' : '#dcdcdc', fillOpacity: visited ? 0.85 : 1
+    };
+  }
+
+  async function showCountries(visited) {
+    document.body.classList.add('country-mode');
+    map.eachLayer(l => { if (l instanceof L.TileLayer) map.removeLayer(l); });
+    layersControl.remove();
+    countryVisited = new Set(visited || []);
+    if (!countryData) countryData = await (await fetch('https://app.local/countries.geojson')).json();
+    if (countryLayer) map.removeLayer(countryLayer);
+    countryLayer = L.geoJSON(countryData, {
+      style: countryStyle,
+      onEachFeature: (f, layer) => {
+        layer.bindTooltip(f.properties.name, { sticky: true });
+        layer.on('click', () => post({ country: f.properties.id }));
+      }
+    }).addTo(map);
+    if (!countrySelected) map.setView([35, 10], 2);
+  }
+
+  // Aufnahmeorte der Fotos eines Landes: runde Fotos, nahe beieinander zu Gruppen zusammengefasst
+  let photoCluster = null;
+  let countryPhotoData = [];
+
+  // Meldet der App, welche Fotos im Kartenausschnitt liegen (für den Fotostreifen)
+  function reportCountryPhotos() {
+    if (!countryPhotoData.length) return;
+    const b = map.getBounds();
+    post({ viewPhotos: countryPhotoData.filter(p => b.contains([p.lat, p.lon])).map(p => p.i) });
+  }
+  map.on('moveend', reportCountryPhotos);
+
+  function showCountryPhotos(photos) {
+    try {
+      if (photoCluster) map.removeLayer(photoCluster);
+      photoCluster = null;
+      countryPhotoData = photos || [];
+      if (!countryPhotoData.length) return;
+      photoCluster = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 50 });
+      const markers = photos.map(p => {
+        const icon = L.divIcon({ className: 'photo-icon', html: `<img src="${p.url}">`,
+                                 iconSize: [44, 44], iconAnchor: [22, 22] });
+        return L.marker([p.lat, p.lon], { icon: icon }).on('click', () => post({ photo: p.i }));
+      });
+      photoCluster.addLayers(markers);
+      map.addLayer(photoCluster);
+      reportCountryPhotos();
+    } catch (err) {
+      post({ log: 'Fehler beim Anzeigen der Aufnahmeorte: ' + err });
+    }
+  }
+
+  function selectCountry(id, zoom) {
+    countrySelected = id;
+    if (!countryLayer) return;
+    countryLayer.setStyle(countryStyle);
+    countryLayer.eachLayer(l => {
+      if (l.feature.properties.id !== id) return;
+      l.bringToFront();
+      if (zoom) map.fitBounds(l.getBounds(), { padding: [30, 30], maxZoom: 6 });
+    });
+  }
 
   function showPoint(lat, lon) {
     map.invalidateSize();

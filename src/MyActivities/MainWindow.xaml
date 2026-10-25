@@ -33,6 +33,10 @@
                                        Icon="{ui:SymbolIcon Fire24}"
                                        TargetPageType="{x:Type views:HeatmapPage}"
                                        NavigationCacheMode="Enabled" />
+                <ui:NavigationViewItem Content="Länder"
+                                       Icon="{ui:SymbolIcon Globe24}"
+                                       TargetPageType="{x:Type views:LaenderPage}"
+                                       NavigationCacheMode="Enabled" />
                 <ui:NavigationViewItem Content="Kalender"
                                        Icon="{ui:SymbolIcon CalendarLtr24}"
                                        TargetPageType="{x:Type views:KalenderPage}"

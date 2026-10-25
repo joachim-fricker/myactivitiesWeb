@@ -33,6 +33,50 @@ public static class MapHost
     public static int? PhotoIndex(CoreWebView2WebMessageReceivedEventArgs e) =>
         MessageValue(e, "photo") is long v ? (int)v : null;
 
+    /// <summary>Länderkarte: Indizes der Fotos im Kartenausschnitt, sonst null.</summary>
+    public static List<int>? ViewPhotos(CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(e.TryGetWebMessageAsString());
+            return doc.RootElement.TryGetProperty("viewPhotos", out var v)
+                ? v.EnumerateArray().Select(x => x.TryGetInt32(out var i) ? i : (int)x.GetDouble()).ToList()
+                : null;
+        }
+        catch (Exception ex) when (ex is JsonException or ArgumentException or InvalidOperationException or FormatException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Text-Rückmeldung der Karte (Diagnose), sonst null.</summary>
+    public static string? LogText(CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(e.TryGetWebMessageAsString());
+            return doc.RootElement.TryGetProperty("log", out var v) ? v.GetString() : null;
+        }
+        catch (Exception ex) when (ex is JsonException or ArgumentException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Länderkarte: angeklicktes Land (ADM0_A3), sonst null.</summary>
+    public static string? CountryCode(CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(e.TryGetWebMessageAsString());
+            return doc.RootElement.TryGetProperty("country", out var v) ? v.GetString() : null;
+        }
+        catch (Exception ex) when (ex is JsonException or ArgumentException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>ID der Tour, deren Details angezeigt werden sollen (Link im Popup), sonst null.</summary>
     public static long? DetailsId(CoreWebView2WebMessageReceivedEventArgs e) => MessageValue(e, "details");
 

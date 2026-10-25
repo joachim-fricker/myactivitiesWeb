@@ -58,6 +58,152 @@ public sealed class ActivityDatabase
         EnsureColumn(c, "bestP5W", "REAL");
         EnsureColumn(c, "bestP10W", "REAL");
         EnsureColumn(c, "bestP20W", "REAL");
+
+        // Fotos mit Aufnahmeort für die Länderkarte (Pfad relativ zum Fotoordner)
+        using var photos = c.CreateCommand();
+        photos.CommandText = """
+            CREATE TABLE IF NOT EXISTS photo_location (
+                path     TEXT PRIMARY KEY,
+                modified INTEGER NOT NULL,
+                taken    TEXT    NOT NULL,
+                lat REAL, lon REAL, country TEXT
+            );
+            CREATE INDEX IF NOT EXISTS ix_photo_country ON photo_location(country);
+            CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+            """;
+        photos.ExecuteNonQuery();
+    }
+
+    // ------------------------------------------------------------------ Fotos / Länder
+
+    public sealed record PhotoLocation(string Path, long Modified, DateTime Taken, double? Lat, double? Lon, string? Country);
+
+    public sealed record CountryStat(string Country, int Count, DateTime? First, DateTime? Last);
+
+    public string? GetMeta(string key)
+    {
+        using var c = Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT value FROM meta WHERE key = $k";
+        cmd.Parameters.AddWithValue("$k", key);
+        return cmd.ExecuteScalar() as string;
+    }
+
+    public void SetMeta(string key, string value)
+    {
+        using var c = Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "INSERT OR REPLACE INTO meta (key, value) VALUES ($k, $v)";
+        cmd.Parameters.AddWithValue("$k", key);
+        cmd.Parameters.AddWithValue("$v", value);
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>Bekannte Fotos: Pfad → Änderungszeit (Ticks).</summary>
+    public Dictionary<string, long> PhotoKeys()
+    {
+        using var c = Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT path, modified FROM photo_location";
+        using var r = cmd.ExecuteReader();
+        var result = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        while (r.Read()) result[r.GetString(0)] = r.GetInt64(1);
+        return result;
+    }
+
+    public void UpsertPhotos(IEnumerable<PhotoLocation> rows)
+    {
+        lock (WriteLock)
+        {
+            using var c = Open();
+            using var tx = c.BeginTransaction();
+            using var cmd = c.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = """
+                INSERT OR REPLACE INTO photo_location (path, modified, taken, lat, lon, country)
+                VALUES ($path, $modified, $taken, $lat, $lon, $country)
+                """;
+            foreach (var p in rows)
+            {
+                cmd.Parameters.Clear();
+                cmd.Parameters.AddWithValue("$path", p.Path);
+                cmd.Parameters.AddWithValue("$modified", p.Modified);
+                cmd.Parameters.AddWithValue("$taken", p.Taken.ToString("yyyy-MM-dd HH:mm:ss"));
+                cmd.Parameters.AddWithValue("$lat", Nullable(p.Lat));
+                cmd.Parameters.AddWithValue("$lon", Nullable(p.Lon));
+                cmd.Parameters.AddWithValue("$country", Nullable(p.Country));
+                cmd.ExecuteNonQuery();
+            }
+            tx.Commit();
+        }
+    }
+
+    public void DeletePhotos(IEnumerable<string> paths)
+    {
+        lock (WriteLock)
+        {
+            using var c = Open();
+            using var tx = c.BeginTransaction();
+            using var cmd = c.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = "DELETE FROM photo_location WHERE path = $path";
+            var param = cmd.Parameters.Add("$path", SqliteType.Text);
+            foreach (var path in paths)
+            {
+                param.Value = path;
+                cmd.ExecuteNonQuery();
+            }
+            tx.Commit();
+        }
+    }
+
+    /// <summary>Alle Fotos mit Position (für das Neuzuordnen, wenn sich die Länderregeln ändern).</summary>
+    public List<PhotoLocation> PhotosWithPosition() => QueryPhotos("WHERE lat IS NOT NULL AND lon IS NOT NULL");
+
+    /// <summary>Fotos eines Landes, neueste zuerst.</summary>
+    public List<PhotoLocation> PhotosInCountry(string country) =>
+        QueryPhotos("WHERE country = $country ORDER BY taken DESC", ("$country", country));
+
+    public int PhotosWithGpsCount()
+    {
+        using var c = Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM photo_location WHERE lat IS NOT NULL";
+        return Convert.ToInt32(cmd.ExecuteScalar());
+    }
+
+    /// <summary>Fotos je Land mit erstem und letztem Aufnahmedatum, meiste Fotos zuerst.</summary>
+    public List<CountryStat> CountryStats()
+    {
+        using var c = Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = """
+            SELECT country, COUNT(*), MIN(taken), MAX(taken) FROM photo_location
+            WHERE country IS NOT NULL GROUP BY country ORDER BY COUNT(*) DESC
+            """;
+        using var r = cmd.ExecuteReader();
+        var list = new List<CountryStat>();
+        while (r.Read())
+        {
+            list.Add(new CountryStat(r.GetString(0), r.GetInt32(1), Format.ParseStart(r.GetString(2)), Format.ParseStart(r.GetString(3))));
+        }
+        return list;
+    }
+
+    private List<PhotoLocation> QueryPhotos(string where, params (string Name, object Value)[] args)
+    {
+        using var c = Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = $"SELECT path, modified, taken, lat, lon, country FROM photo_location {where}";
+        foreach (var (name, value) in args) cmd.Parameters.AddWithValue(name, value);
+        using var r = cmd.ExecuteReader();
+        var list = new List<PhotoLocation>();
+        while (r.Read())
+        {
+            list.Add(new PhotoLocation(r.GetString(0), r.GetInt64(1), Format.ParseStart(r.GetString(2)),
+                                       NullableDouble(r, 3), NullableDouble(r, 4), r.IsDBNull(5) ? null : r.GetString(5)));
+        }
+        return list;
     }
 
     private static void EnsureColumn(SqliteConnection c, string name, string type)

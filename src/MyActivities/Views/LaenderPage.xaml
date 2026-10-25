@@ -1,0 +1,89 @@
+<Page x:Class="MyActivities.Views.LaenderPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+      ScrollViewer.CanContentScroll="False"
+      Title="Länder">
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" MinWidth="400" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="400" MinWidth="280" />
+        </Grid.ColumnDefinitions>
+
+        <StackPanel Grid.Row="0" Grid.ColumnSpan="3" Orientation="Horizontal">
+            <ui:TextBlock Text="Länder" FontTypography="Title" VerticalAlignment="Center" Margin="0,0,24,0" />
+            <ui:TextBox x:Name="SearchBox" Width="220" Margin="0,0,24,0" PlaceholderText="Land suchen …"
+                        TextChanged="OnSearchChanged" />
+            <ui:TextBlock x:Name="SummaryText" FontTypography="BodyStrong" VerticalAlignment="Center" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="0,8,0,8">
+            <ui:TextBlock x:Name="ScanText" TextWrapping="Wrap" />
+            <ProgressBar x:Name="ScanProgress" Height="4" Margin="0,4,0,0" Visibility="Collapsed" />
+        </StackPanel>
+
+        <wv2:WebView2 x:Name="Map" Grid.Row="2" Grid.Column="0" />
+
+        <GridSplitter Grid.Row="2" Grid.Column="1" Width="12" HorizontalAlignment="Center"
+                      Background="Transparent" ResizeBehavior="PreviousAndNext" />
+
+        <DockPanel Grid.Row="2" Grid.Column="2">
+        <ui:TextBlock x:Name="ListHeader" DockPanel.Dock="Top" FontTypography="BodyStrong" Margin="0,0,0,6" />
+        <DataGrid x:Name="CountryTable"
+                  Style="{StaticResource Table}" AutoGenerateColumns="False"
+                  SelectionChanged="OnCountrySelected">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Land" Binding="{Binding Name}" Width="*"
+                                    ElementStyle="{StaticResource LeftCell}" />
+                <DataGridTextColumn Header="Fotos" Binding="{Binding Count, StringFormat=N0}"
+                                    ElementStyle="{StaticResource RightCell}" />
+                <DataGridTextColumn Header="Zeitraum" Binding="{Binding Period}" SortMemberPath="First"
+                                    ElementStyle="{StaticResource LeftCell}" />
+            </DataGrid.Columns>
+        </DataGrid>
+        </DockPanel>
+
+        <!-- Gewähltes Land: Infos und Fotos -->
+        <StackPanel x:Name="CountryPanel" Grid.Row="3" Grid.ColumnSpan="3" Margin="0,10,0,0" Visibility="Collapsed">
+            <ui:TextBlock x:Name="CountryHeader" FontTypography="BodyStrong" Margin="0,0,0,4" />
+            <ListBox x:Name="PhotoList" Height="104" Padding="0,0,0,14"
+                     ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                     ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                     VirtualizingPanel.IsVirtualizing="True"
+                     VirtualizingPanel.VirtualizationMode="Standard"
+                     VirtualizingPanel.ScrollUnit="Pixel"
+                     PreviewMouseLeftButtonUp="OnPhotoClick">
+                <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <VirtualizingStackPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                        <Setter Property="Padding" Value="2" />
+                        <Setter Property="Margin" Value="0,0,4,0" />
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <!-- Vorschaubild wird erst geladen, wenn es sichtbar wird -->
+                        <Border Width="112" Height="76" CornerRadius="4" ClipToBounds="True"
+                                Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                                ToolTip="{Binding Description}"
+                                Loaded="OnThumbLoaded" Unloaded="OnThumbUnloaded">
+                            <Image Source="{Binding Thumb}" Stretch="UniformToFill" />
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </StackPanel>
+    </Grid>
+</Page>

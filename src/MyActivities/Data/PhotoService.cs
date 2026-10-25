@@ -16,6 +16,8 @@ public sealed class TourPhoto(string path, DateTime taken) : INotifyPropertyChan
     public DateTime Taken { get; } = taken;
     public GeoPoint? Gps { get; set; }
     public int Orientation { get; set; } = 1;
+    /// <summary>GPS/Drehung schon aus den EXIF-Daten gelesen?</summary>
+    public bool MetadataRead { get; set; }
     public GeoPoint? MapPosition { get; set; }
     /// <summary>Name und Datum der Tour (nur bei Fotos aus mehreren Touren gesetzt).</summary>
     public string? TourName { get; set; }
@@ -59,10 +61,7 @@ public sealed partial class PhotoService(string root)
             if (!Extensions.Contains(System.IO.Path.GetExtension(file))) continue;
             var name = System.IO.Path.GetFileName(file);
             if (name.Contains("WhatsApp", StringComparison.OrdinalIgnoreCase)) continue;
-            var m = StampRegex().Match(name);
-            if (!m.Success) continue;
-            if (!DateTime.TryParseExact(m.Groups[1].Value + m.Groups[2].Value, "yyyyMMddHHmmss",
-                    CultureInfo.InvariantCulture, DateTimeStyles.None, out var taken)) continue;
+            if (TakenFromName(name) is not DateTime taken) continue;
             byName.TryAdd(name, new PhotoFile(file, taken));   // Kopien desselben Fotos nur einmal
         }
         return byName.Values.OrderBy(p => p.Taken).ToList();
@@ -81,31 +80,61 @@ public sealed partial class PhotoService(string root)
         return photos;
     }
 
-    /// <summary>GPS-Position und Drehung aus den EXIF-Daten.</summary>
-    private static void ReadMetadata(TourPhoto photo)
+    /// <summary>EXIF-Daten eines Fotos: GPS-Position, Drehung, Aufnahmezeit.</summary>
+    public sealed record ExifInfo(GeoPoint? Gps, int Orientation, DateTime? Taken);
+
+    public static ExifInfo ReadExif(string path)
     {
         try
         {
-            using var stream = File.OpenRead(photo.Path);
+            using var stream = File.OpenRead(path);
             var frame = BitmapFrame.Create(stream, BitmapCreateOptions.DelayCreation | BitmapCreateOptions.IgnoreColorProfile,
                                            BitmapCacheOption.None);
-            if (frame.Metadata is not BitmapMetadata md) return;
+            if (frame.Metadata is not BitmapMetadata md) return new ExifInfo(null, 1, null);
 
-            if (md.GetQuery("/app1/ifd/{ushort=274}") is ushort orientation) photo.Orientation = orientation;
+            int orientation = md.GetQuery("/app1/ifd/{ushort=274}") is ushort o ? o : 1;
 
+            GeoPoint? gps = null;
             var lat = Degrees(md.GetQuery("/app1/ifd/gps/{ushort=2}"));
             var lon = Degrees(md.GetQuery("/app1/ifd/gps/{ushort=4}"));
             if (lat is double la && lon is double lo && (la != 0 || lo != 0))
             {
                 if (md.GetQuery("/app1/ifd/gps/{ushort=1}") as string == "S") la = -la;
                 if (md.GetQuery("/app1/ifd/gps/{ushort=3}") as string == "W") lo = -lo;
-                photo.Gps = new GeoPoint(la, lo);
+                gps = new GeoPoint(la, lo);
             }
+
+            DateTime? taken = null;
+            if (md.GetQuery("/app1/ifd/exif/{ushort=36867}") is string text &&
+                DateTime.TryParseExact(text.Trim('\0', ' '), "yyyy:MM:dd HH:mm:ss", CultureInfo.InvariantCulture,
+                                       DateTimeStyles.None, out var t))
+            {
+                taken = t;
+            }
+            return new ExifInfo(gps, orientation, taken);
         }
         catch (Exception)
         {
-            // keine oder unlesbare EXIF-Daten: dann eben ohne GPS/Drehung
+            return new ExifInfo(null, 1, null);   // keine oder unlesbare EXIF-Daten
         }
+    }
+
+    /// <summary>Aufnahmezeit aus dem Dateinamen (z. B. 20250102_101929.jpg), sonst null.</summary>
+    public static DateTime? TakenFromName(string fileName)
+    {
+        var m = StampRegex().Match(fileName);
+        return m.Success && DateTime.TryParseExact(m.Groups[1].Value + m.Groups[2].Value, "yyyyMMddHHmmss",
+                   CultureInfo.InvariantCulture, DateTimeStyles.None, out var t) ? t : null;
+    }
+
+    /// <summary>GPS-Position und Drehung ins Foto übernehmen (einmal).</summary>
+    public static void ReadMetadata(TourPhoto photo)
+    {
+        if (photo.MetadataRead) return;
+        var exif = ReadExif(photo.Path);
+        photo.Gps = exif.Gps;
+        photo.Orientation = exif.Orientation;
+        photo.MetadataRead = true;
     }
 
     /// <summary>EXIF-Grad/Minuten/Sekunden (je ein Bruch: unten Zähler, oben Nenner) in Dezimalgrad.</summary>
@@ -145,6 +174,13 @@ public sealed partial class PhotoService(string root)
         {
             return null;
         }
+    }
+
+    /// <summary>Vorschaubild laden; liest vorher bei Bedarf die Drehung aus den EXIF-Daten.</summary>
+    public static BitmapSource? LoadThumb(TourPhoto photo, int decodeWidth)
+    {
+        ReadMetadata(photo);
+        return LoadImage(photo.Path, decodeWidth, photo.Orientation);
     }
 
     /// <summary>URL des Fotos für die Karte (WebView2 bildet photos.local auf den Fotoordner ab).</summary>
