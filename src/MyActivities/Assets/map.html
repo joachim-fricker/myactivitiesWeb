@@ -235,15 +235,36 @@
 
   // ---- Länderkarte: besuchte Länder eingefärbt, ohne Grundkarte
   let countryData = null, countryLayer = null, countryVisited = new Set(), countrySelected = null;
+  let countryDetail = false;               // reingezoomt: Grundkarte sichtbar, Länder nur noch leicht getönt
+  const COUNTRY_MAP_FROM_ZOOM = 5;
 
   function countryStyle(f) {
     const visited = countryVisited.has(f.properties.id);
     const selected = f.properties.id === countrySelected;
+    if (countryDetail) {
+      return {
+        color: selected ? '#c62828' : '#666666', weight: selected ? 3 : 1, opacity: selected ? 1 : 0.6,
+        fillColor: '#43a047', fillOpacity: visited ? 0.12 : 0
+      };
+    }
     return {
-      color: selected ? '#c62828' : '#ffffff', weight: selected ? 2.5 : 0.7,
+      color: selected ? '#c62828' : '#ffffff', weight: selected ? 2.5 : 0.7, opacity: 1,
       fillColor: visited ? '#43a047' : '#dcdcdc', fillOpacity: visited ? 0.85 : 1
     };
   }
+
+  // Ab Zoomstufe 5 die normale Karte unter den Ländern einblenden
+  function updateCountryZoom() {
+    if (!countryLayer) return;
+    const detail = map.getZoom() >= COUNTRY_MAP_FROM_ZOOM;
+    if (detail && !map.hasLayer(osm)) { osm.addTo(map); osm.bringToBack(); }
+    if (!detail && map.hasLayer(osm)) map.removeLayer(osm);
+    if (detail !== countryDetail) {
+      countryDetail = detail;
+      countryLayer.setStyle(countryStyle);
+    }
+  }
+  map.on('zoomend', updateCountryZoom);
 
   async function showCountries(visited) {
     document.body.classList.add('country-mode');
@@ -260,6 +281,7 @@
       }
     }).addTo(map);
     if (!countrySelected) map.setView([35, 10], 2);
+    updateCountryZoom();
   }
 
   // Aufnahmeorte der Fotos eines Landes: runde Fotos, nahe beieinander zu Gruppen zusammengefasst

@@ -8,6 +8,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>MyActivities</RootNamespace>
     <AssemblyName>MyActivities</AssemblyName>
+    <!-- Icon der Android-App (Berg mit Gipfelfahne und Track) -->
+    <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,6 +22,7 @@
 
   <ItemGroup>
     <Content Include="Assets\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <Resource Include="app.ico" />
   </ItemGroup>
 
 </Project>
