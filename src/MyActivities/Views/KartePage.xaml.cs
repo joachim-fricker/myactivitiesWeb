@@ -18,7 +18,6 @@ public partial class KartePage : Page
     private int _request;
     private Activity? _selected;
     private List<TourPhoto> _photos = [];
-    private TourDetailWindow? _detailWindow;
 
     /// <summary>Geöffnete Tracks (lila), bleiben auch bei Filterwechsel stehen.</summary>
     private readonly Dictionary<long, List<GeoPoint>> _opened = [];
@@ -361,21 +360,7 @@ public partial class KartePage : Page
         return result;
     }
 
-    /// <summary>Detailfenster öffnen (oder das offene auf diese Tour umstellen).</summary>
-    private void OpenDetails(Activity a)
-    {
-        if (_detailWindow is null)
-        {
-            _detailWindow = new TourDetailWindow { Owner = Window.GetWindow(this) };
-            _detailWindow.Closed += (_, _) => _detailWindow = null;
-            _detailWindow.Show();
-        }
-        else
-        {
-            _detailWindow.Activate();
-        }
-        if (_detailWindow.CurrentActivity != a) _ = _detailWindow.ShowAsync(a);
-    }
+    private void OpenDetails(Activity a) => TourDetails.Open(a, Window.GetWindow(this));
 
     private async Task ShowTourAsync(Activity a)
     {

@@ -1,0 +1,64 @@
+<Page x:Class="MyActivities.Views.KalenderPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      Title="Kalender">
+    <StackPanel Margin="24">
+        <!-- Kopf: Gruppe, Messgröße, Jahr/Saison -->
+        <WrapPanel Orientation="Horizontal">
+            <ui:TextBlock Text="Kalender" FontTypography="Title" VerticalAlignment="Center" Margin="0,0,24,0" />
+            <ComboBox x:Name="GroupBox" Width="140" Margin="0,0,8,0" SelectedIndex="0"
+                      SelectionChanged="OnFilterChanged">
+                <ComboBoxItem Content="Alle" />
+                <ComboBoxItem Content="Radfahren" />
+                <ComboBoxItem Content="Wandern" />
+                <ComboBoxItem Content="Skitouren" />
+            </ComboBox>
+            <ComboBox x:Name="MetricBox" Width="140" Margin="0,0,24,0" SelectedIndex="0"
+                      SelectionChanged="OnFilterChanged">
+                <ComboBoxItem Content="Kilometer" />
+                <ComboBoxItem Content="Höhenmeter" />
+            </ComboBox>
+            <ui:Button x:Name="PrevButton" Icon="{ui:SymbolIcon ChevronLeft24}" Click="OnPrev" />
+            <ui:TextBlock x:Name="PeriodText" FontTypography="Subtitle" VerticalAlignment="Center"
+                          MinWidth="100" TextAlignment="Center" Margin="8,0" />
+            <ui:Button x:Name="NextButton" Icon="{ui:SymbolIcon ChevronRight24}" Click="OnNext" />
+        </WrapPanel>
+
+        <!-- Zusammenfassung und Legende -->
+        <StackPanel Orientation="Horizontal" Margin="0,12,0,12">
+            <ui:TextBlock x:Name="SummaryText" VerticalAlignment="Center" Margin="0,0,24,0" />
+            <ui:TextBlock Text="weniger" VerticalAlignment="Center" Margin="0,0,6,0" FontSize="12" />
+            <StackPanel x:Name="Legend" Orientation="Horizontal" VerticalAlignment="Center" />
+            <ui:TextBlock Text="mehr" VerticalAlignment="Center" Margin="6,0,0,0" FontSize="12" />
+        </StackPanel>
+
+        <!-- 12 Monate -->
+        <UniformGrid x:Name="Months" Columns="4" HorizontalAlignment="Left" />
+
+        <!-- Touren des gewählten Tages -->
+        <StackPanel x:Name="DayPanel" Margin="0,16,0,0" Visibility="Collapsed">
+            <ui:TextBlock x:Name="DayHeader" FontTypography="Subtitle" Margin="0,0,0,6" />
+            <DataGrid x:Name="DayTable" Style="{StaticResource Table}" AutoGenerateColumns="False"
+                      MaxHeight="260" SelectionChanged="OnDayTourSelected">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Start" Binding="{Binding Start, StringFormat=HH:mm}"
+                                        ElementStyle="{StaticResource LeftCell}" />
+                    <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*" MaxWidth="370"
+                                        ElementStyle="{StaticResource LeftCell}" />
+                    <DataGridTextColumn Header="Typ" Binding="{Binding TypeLabel}"
+                                        ElementStyle="{StaticResource LeftCell}" />
+                    <DataGridTextColumn Header="Ort" Binding="{Binding LocationName}"
+                                        ElementStyle="{StaticResource LeftCell}" />
+                    <DataGridTextColumn Header="km" Binding="{Binding Km, StringFormat=N1}"
+                                        ElementStyle="{StaticResource RightCell}" />
+                    <DataGridTextColumn Header="Hm" Binding="{Binding ElevationGain, StringFormat=N0}"
+                                        ElementStyle="{StaticResource RightCell}" />
+                    <DataGridTextColumn Header="Zeit" Binding="{Binding DurationText}"
+                                        ElementStyle="{StaticResource RightCell}" />
+                </DataGrid.Columns>
+            </DataGrid>
+            <ui:TextBlock Margin="0,4,0,0" FontSize="12" Text="Klick auf eine Tour öffnet die Details." />
+        </StackPanel>
+    </StackPanel>
+</Page>

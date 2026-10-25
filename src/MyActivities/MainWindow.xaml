@@ -29,6 +29,10 @@
                                        Icon="{ui:SymbolIcon Map24}"
                                        TargetPageType="{x:Type views:KartePage}"
                                        NavigationCacheMode="Enabled" />
+                <ui:NavigationViewItem Content="Kalender"
+                                       Icon="{ui:SymbolIcon CalendarLtr24}"
+                                       TargetPageType="{x:Type views:KalenderPage}"
+                                       NavigationCacheMode="Enabled" />
                 <ui:NavigationViewItem Content="Statistik"
                                        Icon="{ui:SymbolIcon DataBarVertical24}"
                                        TargetPageType="{x:Type views:StatistikPage}" />

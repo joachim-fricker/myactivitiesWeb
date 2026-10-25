@@ -28,7 +28,6 @@ public partial class AktivitaetenPage : Page
     private Activity? _selected;
     private string? _mapScript;   // zuletzt angezeigter Inhalt der Karte (für die große Karte)
     private List<TourPhoto> _photos = [];
-    private TourDetailWindow? _detailWindow;
     private string _powerProgress = "";
 
     public AktivitaetenPage()
@@ -175,7 +174,7 @@ public partial class AktivitaetenPage : Page
         if (Table.SelectedItem is not Activity a) return;
         _selected = a;
         DetailsButton.IsEnabled = true;
-        if (_detailWindow is not null) _ = _detailWindow.ShowAsync(a);   // offenes Detailfenster folgt der Auswahl
+        TourDetails.FollowIfOpen(a);   // offenes Detailfenster folgt der Auswahl
         await ShowMapAsync(a);
     }
 
@@ -197,18 +196,7 @@ public partial class AktivitaetenPage : Page
 
     private void OpenDetails()
     {
-        if (_selected is null) return;
-        if (_detailWindow is null)
-        {
-            _detailWindow = new TourDetailWindow { Owner = Window.GetWindow(this) };
-            _detailWindow.Closed += (_, _) => _detailWindow = null;
-            _detailWindow.Show();
-        }
-        else
-        {
-            _detailWindow.Activate();
-        }
-        if (_detailWindow.CurrentActivity != _selected) _ = _detailWindow.ShowAsync(_selected);
+        if (_selected is not null) TourDetails.Open(_selected, Window.GetWindow(this));
     }
 
     private async Task InitMapAsync()
