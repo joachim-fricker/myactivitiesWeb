@@ -18,6 +18,7 @@ public partial class KartePage : Page
     private int _request;
     private Activity? _selected;
     private List<TourPhoto> _photos = [];
+    private TourDetailWindow? _detailWindow;
 
     /// <summary>Geöffnete Tracks (lila), bleiben auch bei Filterwechsel stehen.</summary>
     private readonly Dictionary<long, List<GeoPoint>> _opened = [];
@@ -62,9 +63,9 @@ public partial class KartePage : Page
             {
                 UpdateViewInfo(view.Count, view.Closed, view.Zoom);
             }
-            else if (MapHost.DetailsId(e) is long detailsId)
+            else if (MapHost.DetailsId(e) is long detailsId && _all.FirstOrDefault(x => x.Id == detailsId) is Activity tour)
             {
-                (Window.GetWindow(this) as MainWindow)?.ShowActivity(detailsId);
+                OpenDetails(tour);
             }
             else if (MapHost.SelectedId(e) is long id && _all.FirstOrDefault(a => a.Id == id) is Activity a)
             {
@@ -358,6 +359,22 @@ public partial class KartePage : Page
         for (int i = 0; i < points.Count; i += step) result.Add(points[i]);
         result.Add(points[^1]);
         return result;
+    }
+
+    /// <summary>Detailfenster öffnen (oder das offene auf diese Tour umstellen).</summary>
+    private void OpenDetails(Activity a)
+    {
+        if (_detailWindow is null)
+        {
+            _detailWindow = new TourDetailWindow { Owner = Window.GetWindow(this) };
+            _detailWindow.Closed += (_, _) => _detailWindow = null;
+            _detailWindow.Show();
+        }
+        else
+        {
+            _detailWindow.Activate();
+        }
+        if (_detailWindow.CurrentActivity != a) _ = _detailWindow.ShowAsync(a);
     }
 
     private async Task ShowTourAsync(Activity a)

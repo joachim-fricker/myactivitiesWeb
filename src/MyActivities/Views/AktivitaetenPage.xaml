@@ -10,18 +10,13 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
+            <RowDefinition Height="3*" MinHeight="150" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="2*" MinHeight="150" />
         </Grid.RowDefinitions>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="3*" MinWidth="400" />
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="2*" MinWidth="320" />
-        </Grid.ColumnDefinitions>
 
         <!-- Kopf mit Filtern -->
-        <WrapPanel Grid.Row="0" Grid.ColumnSpan="3" Orientation="Horizontal">
-            <ui:Button x:Name="BackToMapButton" Margin="0,0,16,0" Content="Zurück zur Karte"
-                       Icon="{ui:SymbolIcon ArrowLeft24}" Visibility="Collapsed" Click="OnBackToMapClick" />
+        <WrapPanel Grid.Row="0" Orientation="Horizontal">
             <ui:TextBlock Text="Aktivitäten" FontTypography="Title" VerticalAlignment="Center" Margin="0,0,24,0" />
             <ComboBox x:Name="QuickBox" Width="140" Margin="0,0,8,0" SelectedIndex="0"
                       SelectionChanged="OnQuickChanged">
@@ -36,19 +31,22 @@
                       SelectionChanged="OnFilterChanged" />
             <ui:TextBox x:Name="SearchBox" Width="220" PlaceholderText="Suche Name oder Ort"
                         TextChanged="OnSearchChanged" />
+            <ui:ToggleSwitch x:Name="IndoorSwitch" Margin="16,0,0,0" VerticalAlignment="Center"
+                             Content="Indoor-Rad" IsChecked="False" Click="OnIndoorClick" />
         </WrapPanel>
 
-        <ui:TextBlock x:Name="SummaryText" Grid.Row="1" Grid.ColumnSpan="3" Margin="0,12,0,8" />
+        <ui:TextBlock x:Name="SummaryText" Grid.Row="1" Margin="0,12,0,8" />
 
-        <!-- Tabelle -->
-        <DataGrid x:Name="Table" Grid.Row="2" Grid.Column="0"
+        <!-- Tabelle (Doppelklick oder Enter öffnet die Details) -->
+        <DataGrid x:Name="Table" Grid.Row="2"
                   Style="{StaticResource Table}" AutoGenerateColumns="False"
-                  SelectionChanged="OnSelectionChanged">
+                  SelectionChanged="OnSelectionChanged"
+                  MouseDoubleClick="OnTableDoubleClick" PreviewKeyDown="OnTableKeyDown">
             <DataGrid.Columns>
                 <DataGridTextColumn x:Name="DateColumn" Header="Datum"
                                     Binding="{Binding Start, StringFormat=dd.MM.yyyy}" SortMemberPath="Start"
                                     ElementStyle="{StaticResource LeftCell}" />
-                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"
+                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*" MinWidth="160" MaxWidth="370"
                                     ElementStyle="{StaticResource LeftCell}" />
                 <DataGridTextColumn Header="Typ" Binding="{Binding TypeLabel}"
                                     ElementStyle="{StaticResource LeftCell}" />
@@ -58,119 +56,46 @@
                                     ElementStyle="{StaticResource RightCell}" />
                 <DataGridTextColumn Header="Zeit" Binding="{Binding DurationText}" SortMemberPath="DurationS"
                                     ElementStyle="{StaticResource RightCell}" />
+                <DataGridTextColumn Header="Ø km/h" Binding="{Binding AvgKmh, StringFormat=N1}"
+                                    ElementStyle="{StaticResource RightCell}" />
+                <DataGridTextColumn Header="Max km/h" Binding="{Binding MaxKmh, StringFormat=N1}"
+                                    ElementStyle="{StaticResource RightCell}" />
+                <DataGridTextColumn Header="Höchster Pkt." Binding="{Binding MaxElev, StringFormat=N0}"
+                                    ElementStyle="{StaticResource RightCell}" />
+                <DataGridTextColumn Header="5 min W" Binding="{Binding BestP5W, StringFormat=N0}"
+                                    ElementStyle="{StaticResource RightCell}" />
+                <DataGridTextColumn Header="10 min W" Binding="{Binding BestP10W, StringFormat=N0}"
+                                    ElementStyle="{StaticResource RightCell}" />
+                <DataGridTextColumn Header="20 min W" Binding="{Binding BestP20W, StringFormat=N0}"
+                                    ElementStyle="{StaticResource RightCell}" />
             </DataGrid.Columns>
         </DataGrid>
 
-        <GridSplitter Grid.Row="2" Grid.Column="1" Width="12" HorizontalAlignment="Center"
-                      Background="Transparent" ResizeBehavior="PreviousAndNext" />
+        <GridSplitter Grid.Row="3" Height="12" HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                      Background="Transparent" ResizeBehavior="PreviousAndNext" ResizeDirection="Rows" />
 
-        <!-- Details -->
-        <Grid Grid.Row="2" Grid.Column="2">
+        <!-- Karte der ausgewählten Tour -->
+        <Grid Grid.Row="4">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" MinHeight="200" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-
-            <StackPanel Grid.Row="0">
-                <ui:TextBlock x:Name="DetailName" FontTypography="Subtitle" TextWrapping="Wrap"
-                              Text="Aktivität in der Tabelle auswählen" />
-                <ui:TextBlock x:Name="DetailSub" Margin="0,2,0,0" TextWrapping="Wrap"
-                              Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                <ui:TextBlock x:Name="DetailLocation" Margin="0,2,0,0" TextWrapping="Wrap" />
-            </StackPanel>
-
-            <UniformGrid x:Name="Tiles" Grid.Row="1" Columns="3" Margin="0,12,0,12" Visibility="Collapsed">
-                <ui:Card Margin="0,0,4,0" Padding="12">
-                    <StackPanel>
-                        <ui:TextBlock Text="Distanz" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                        <ui:TextBlock x:Name="TileKm" FontTypography="BodyStrong" />
-                    </StackPanel>
-                </ui:Card>
-                <ui:Card Margin="4,0,4,0" Padding="12">
-                    <StackPanel>
-                        <ui:TextBlock Text="Aufstieg" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                        <ui:TextBlock x:Name="TileHm" FontTypography="BodyStrong" />
-                    </StackPanel>
-                </ui:Card>
-                <ui:Card Margin="4,0,0,0" Padding="12">
-                    <StackPanel>
-                        <ui:TextBlock Text="Dauer" Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                        <ui:TextBlock x:Name="TileTime" FontTypography="BodyStrong" />
-                    </StackPanel>
-                </ui:Card>
-            </UniformGrid>
-
-            <Border Grid.Row="2" CornerRadius="6" ClipToBounds="True">
-                <wv2:WebView2 x:Name="Map" />
-            </Border>
-            <Grid Grid.Row="3" Margin="0,6,0,0">
+            <Grid Grid.Row="0" Margin="0,0,0,6">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <ui:TextBlock x:Name="TrackStatus" VerticalAlignment="Center" TextWrapping="Wrap"
-                              Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                <ui:Button x:Name="EnlargeButton" Grid.Column="1" Content="Karte vergrößern"
+                              Text="Tour in der Tabelle auswählen" />
+                <ui:Button x:Name="DetailsButton" Grid.Column="1" Margin="8,0,0,0" Content="Details"
+                           Appearance="Primary" Icon="{ui:SymbolIcon Info24}" IsEnabled="False"
+                           Click="OnDetailsClick" />
+                <ui:Button x:Name="EnlargeButton" Grid.Column="2" Margin="8,0,0,0" Content="Karte vergrößern"
                            Icon="{ui:SymbolIcon FullScreenMaximize24}" IsEnabled="False"
                            Click="OnEnlargeClick" />
             </Grid>
-
-            <!-- Fotos zur Tour -->
-            <StackPanel x:Name="PhotoPanel" Grid.Row="4" Margin="0,8,0,0" Visibility="Collapsed">
-                <ui:TextBlock x:Name="PhotoHeader" FontTypography="BodyStrong" Margin="0,0,0,4" />
-                <ListBox x:Name="PhotoList" Height="104" Padding="0,0,0,14"
-                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                         ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                         PreviewMouseLeftButtonUp="OnPhotoClick" KeyDown="OnPhotoKeyDown">
-                    <ListBox.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <VirtualizingStackPanel Orientation="Horizontal" />
-                        </ItemsPanelTemplate>
-                    </ListBox.ItemsPanel>
-                    <ListBox.ItemContainerStyle>
-                        <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
-                            <Setter Property="Padding" Value="2" />
-                            <Setter Property="Margin" Value="0,0,4,0" />
-                        </Style>
-                    </ListBox.ItemContainerStyle>
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <Border Width="112" Height="76" CornerRadius="4" ClipToBounds="True"
-                                    Background="{DynamicResource ControlFillColorSecondaryBrush}"
-                                    ToolTip="{Binding Taken, StringFormat=HH:mm}">
-                                <Image Source="{Binding Thumb}" Stretch="UniformToFill" />
-                            </Border>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-            </StackPanel>
-
-            <ui:Card Grid.Row="5" Margin="0,8,0,0" Padding="12,8">
-                <ItemsControl x:Name="DetailList">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Grid Margin="0,2">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <ui:TextBlock Text="{Binding Key}"
-                                              Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                                <ui:TextBlock Grid.Column="1" Text="{Binding Value}" FontWeight="SemiBold" />
-                            </Grid>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ui:Card>
-
-            <ui:Button x:Name="GarminButton" Grid.Row="6" Margin="0,12,0,0" Visibility="Collapsed"
-                       Content="In Garmin Connect öffnen" Icon="{ui:SymbolIcon Open24}"
-                       Click="OnGarminClick" />
+            <wv2:WebView2 x:Name="Map" Grid.Row="1" />
         </Grid>
     </Grid>
 </Page>

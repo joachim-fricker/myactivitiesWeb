@@ -16,7 +16,7 @@ public static class WindowBounds
     private static readonly string FilePath = Path.Combine(AppServices.DataFolder, "windows.json");
     private static readonly Dictionary<string, Bounds> Saved = Load();
 
-    public static void Apply(Window window, string key, double widthFraction, double heightFraction)
+    public static void Apply(Window window, string key, double widthFraction, double heightFraction, double widthAdjust = 0)
     {
         window.WindowStartupLocation = WindowStartupLocation.Manual;
 
@@ -31,7 +31,7 @@ public static class WindowBounds
         else
         {
             var area = SystemParameters.WorkArea;
-            window.Width = area.Width * widthFraction;
+            window.Width = area.Width * widthFraction + widthAdjust;
             window.Height = area.Height * heightFraction;
             window.Left = area.Left + (area.Width - window.Width) / 2;
             window.Top = area.Top + (area.Height - window.Height) / 2;

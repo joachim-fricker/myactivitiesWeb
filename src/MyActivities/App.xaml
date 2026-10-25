@@ -51,8 +51,9 @@
                 <Setter Property="SelectionUnit" Value="FullRow" />
                 <Setter Property="HeadersVisibility" Value="Column" />
                 <Setter Property="CanUserSortColumns" Value="True" />
-                <Setter Property="GridLinesVisibility" Value="Horizontal" />
-                <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}" />
+                <Setter Property="GridLinesVisibility" Value="All" />
+                <Setter Property="HorizontalGridLinesBrush" Value="#40808080" />
+                <Setter Property="VerticalGridLinesBrush" Value="#30808080" />
                 <Setter Property="AlternationCount" Value="2" />
                 <Setter Property="AlternatingRowBackground" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
                 <Setter Property="CellStyle" Value="{StaticResource FullRowCell}" />

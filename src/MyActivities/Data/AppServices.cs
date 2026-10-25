@@ -22,6 +22,8 @@ public static class AppServices
 
     public static PhotoService Photos { get; } = new(PhotoFolder);
 
+    public static PowerService Power { get; } = new(Db, Tracks);
+
     private static Task<CoreWebView2Environment>? _webViewEnvironment;
 
     /// <summary>Gemeinsame WebView2-Umgebung für alle Karten (Daten unter DataFolder\WebView2).</summary>

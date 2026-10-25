@@ -52,6 +52,56 @@ public sealed class ActivityDatabase
             CREATE INDEX IF NOT EXISTS ix_activity_start ON activity(startTime);
             """;
         cmd.ExecuteNonQuery();
+
+        // Später ergänzte Spalten (bestehende Datenbanken werden erweitert).
+        // Geschätzte beste Leistung am Berg in Watt: null = noch nicht berechnet, -1 = nicht verfügbar
+        EnsureColumn(c, "bestP5W", "REAL");
+        EnsureColumn(c, "bestP10W", "REAL");
+        EnsureColumn(c, "bestP20W", "REAL");
+    }
+
+    private static void EnsureColumn(SqliteConnection c, string name, string type)
+    {
+        using var check = c.CreateCommand();
+        check.CommandText = "SELECT COUNT(*) FROM pragma_table_info('activity') WHERE name = $name";
+        check.Parameters.AddWithValue("$name", name);
+        if (Convert.ToInt32(check.ExecuteScalar()) > 0) return;
+        using var alter = c.CreateCommand();
+        alter.CommandText = $"ALTER TABLE activity ADD COLUMN {name} {type}";
+        alter.ExecuteNonQuery();
+    }
+
+    private static readonly object WriteLock = new();
+
+    /// <summary>Radtouren ohne berechnete Leistung.</summary>
+    public List<(long Id, string TypeKey, string Name)> MissingPower(IEnumerable<string> types)
+    {
+        using var c = Open();
+        using var cmd = c.CreateCommand();
+        var keys = types.ToList();
+        var names = keys.Select((_, i) => $"$t{i}").ToList();
+        cmd.CommandText = $"SELECT id, typeKey, name FROM activity WHERE bestP5W IS NULL AND typeKey IN ({string.Join(",", names)})";
+        for (int i = 0; i < keys.Count; i++) cmd.Parameters.AddWithValue(names[i], keys[i]);
+        using var r = cmd.ExecuteReader();
+        var list = new List<(long, string, string)>();
+        while (r.Read()) list.Add((r.GetInt64(0), r.GetString(1), r.GetString(2)));
+        return list;
+    }
+
+    /// <summary>Leistung speichern (5/10/20 min); null wird als -1 = nicht verfügbar gespeichert.</summary>
+    public void UpdatePower(long id, double?[] watts)
+    {
+        lock (WriteLock)
+        {
+            using var c = Open();
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = "UPDATE activity SET bestP5W = $p5, bestP10W = $p10, bestP20W = $p20 WHERE id = $id";
+            cmd.Parameters.AddWithValue("$p5", watts.ElementAtOrDefault(0) ?? -1);
+            cmd.Parameters.AddWithValue("$p10", watts.ElementAtOrDefault(1) ?? -1);
+            cmd.Parameters.AddWithValue("$p20", watts.ElementAtOrDefault(2) ?? -1);
+            cmd.Parameters.AddWithValue("$id", id);
+            cmd.ExecuteNonQuery();
+        }
     }
 
     public int Count()
@@ -132,7 +182,8 @@ public sealed class ActivityDatabase
         using var cmd = c.CreateCommand();
         cmd.CommandText = """
             SELECT id, name, typeKey, startTime, distanceM, durationS, elevationGain, locationName,
-                   startLat, startLon, avgSpeed, maxSpeed, avgHr, calories, minElev, maxElev, deviceId
+                   startLat, startLon, avgSpeed, maxSpeed, avgHr, calories, minElev, maxElev, deviceId,
+                   bestP5W, bestP10W, bestP20W
             FROM activity
             """;
         using var r = cmd.ExecuteReader();
@@ -158,12 +209,17 @@ public sealed class ActivityDatabase
                 MinElev = NullableDouble(r, 14),
                 MaxElev = NullableDouble(r, 15),
                 DeviceId = r.IsDBNull(16) ? null : r.GetInt64(16),
+                BestP5W = Positive(NullableDouble(r, 17)),
+                BestP10W = Positive(NullableDouble(r, 18)),
+                BestP20W = Positive(NullableDouble(r, 19)),
             });
         }
         return list;
     }
 
     private static double? NullableDouble(SqliteDataReader r, int i) => r.IsDBNull(i) ? null : r.GetDouble(i);
+
+    private static double? Positive(double? v) => v > 0 ? v : null;
 
     /// <summary>Summen je Kalenderjahr und typeKey.</summary>
     public List<YearTypeSum> YearTypeSums() => QuerySums("""

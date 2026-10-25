@@ -21,9 +21,6 @@
                            IsBackButtonVisible="Collapsed"
                            OpenPaneLength="220">
             <ui:NavigationView.MenuItems>
-                <ui:NavigationViewItem Content="Statistik"
-                                       Icon="{ui:SymbolIcon DataBarVertical24}"
-                                       TargetPageType="{x:Type views:StatistikPage}" />
                 <ui:NavigationViewItem Content="Aktivitäten"
                                        Icon="{ui:SymbolIcon Table24}"
                                        TargetPageType="{x:Type views:AktivitaetenPage}"
@@ -32,6 +29,9 @@
                                        Icon="{ui:SymbolIcon Map24}"
                                        TargetPageType="{x:Type views:KartePage}"
                                        NavigationCacheMode="Enabled" />
+                <ui:NavigationViewItem Content="Statistik"
+                                       Icon="{ui:SymbolIcon DataBarVertical24}"
+                                       TargetPageType="{x:Type views:StatistikPage}" />
             </ui:NavigationView.MenuItems>
             <ui:NavigationView.FooterMenuItems>
                 <ui:NavigationViewItem Content="Einstellungen"

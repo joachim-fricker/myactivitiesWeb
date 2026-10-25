@@ -1,12 +1,8 @@
 using System.ComponentModel;
-using System.Globalization;
-using System.IO;
-using System.Net.Http;
-using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
-using System.Xml;
+using System.Windows.Input;
 using MyActivities.Data;
 using MyActivities.Domain;
 
@@ -23,27 +19,32 @@ public partial class AktivitaetenPage : Page
         (Stats.SkiTypes, false),
     ];
 
-    /// <summary>Beim nächsten Anzeigen auszuwählende Tour (z. B. "Details anzeigen" auf der Karte).</summary>
-    public static long? PendingSelection { get; set; }
-
     private List<Activity> _all = [];
     private ICollectionView? _view;
     private bool _updatingFilters;
+    private int _dbCount = -1;
     private Task? _mapInit;
     private int _trackRequest;
     private Activity? _selected;
     private string? _mapScript;   // zuletzt angezeigter Inhalt der Karte (für die große Karte)
     private List<TourPhoto> _photos = [];
-    private List<KeyValuePair<string, string>> _detailLines = [];
+    private TourDetailWindow? _detailWindow;
+    private string _powerProgress = "";
 
     public AktivitaetenPage()
     {
         InitializeComponent();
         Loaded += (_, _) =>
         {
-            LoadData();
+            // Nur neu laden, wenn neue Aktivitäten dazugekommen sind (Seite bleibt im Speicher)
+            int count = AppServices.Db.Count();
+            if (count != _dbCount)
+            {
+                _dbCount = count;
+                LoadData();
+            }
             _mapInit ??= InitMapAsync();
-            SelectPending();
+            _ = BackfillPowerAsync();
         };
     }
 
@@ -73,26 +74,12 @@ public partial class AktivitaetenPage : Page
         UpdateSummary();
     }
 
-    private void SelectPending()
-    {
-        BackToMapButton.Visibility = PendingSelection is null ? Visibility.Collapsed : Visibility.Visible;
-        if (PendingSelection is not long id) return;
-        PendingSelection = null;
-        if (_all.FirstOrDefault(a => a.Id == id) is not Activity a) return;
-        Table.SelectedItem = a;   // löst Details, Karte und Fotos aus
-        Table.ScrollIntoView(a);
-        Table.Focus();
-    }
-
-    private void OnBackToMapClick(object sender, RoutedEventArgs e)
-    {
-        BackToMapButton.Visibility = Visibility.Collapsed;
-        (Window.GetWindow(this) as MainWindow)?.ShowMap();
-    }
-
     private bool Matches(object item)
     {
         var a = (Activity)item;
+
+        // Indoor-Fahrten (Rouvy, Rollentrainer) nur auf Wunsch
+        if (IndoorSwitch.IsChecked != true && Stats.IsIndoor(a.TypeKey, a.Name)) return false;
 
         var types = QuickFilters[Math.Max(QuickBox.SelectedIndex, 0)].Types;
         if (types is not null && !types.Contains(a.TypeKey)) return false;
@@ -139,10 +126,11 @@ public partial class AktivitaetenPage : Page
     {
         if (_view is null) return;
         var visible = _view.Cast<Activity>().ToList();
-        SummaryText.Text = visible.Count == 0
+        SummaryText.Text = (visible.Count == 0
             ? (_all.Count == 0 ? "Noch keine Daten – bitte unter Einstellungen synchronisieren."
                                : "Keine Aktivitäten für diese Auswahl.")
-            : $"{visible.Count} Aktivitäten · {visible.Sum(a => a.Km):N0} km · {visible.Sum(a => a.ElevationGain):N0} Hm";
+            : $"{visible.Count} Aktivitäten · {visible.Sum(a => a.Km):N0} km · {visible.Sum(a => a.ElevationGain):N0} Hm")
+            + _powerProgress;
     }
 
     private void OnQuickChanged(object sender, SelectionChangedEventArgs e)
@@ -158,72 +146,78 @@ public partial class AktivitaetenPage : Page
 
     private void OnSearchChanged(object sender, TextChangedEventArgs e) => ApplyFilter();
 
-    // ------------------------------------------------------------------ Details
+    private void OnIndoorClick(object sender, RoutedEventArgs e) => ApplyFilter();
+
+    // ------------------------------------------------------------------ Watt-Werte im Hintergrund
+
+    /// <summary>Leistung am Berg für alle Radtouren nachberechnen (lädt dafür die GPX-Dateien).</summary>
+    private async Task BackfillPowerAsync()
+    {
+        var byId = _all.ToDictionary(a => a.Id);
+        var progress = new Progress<(int Done, int Total)>(p =>
+        {
+            _powerProgress = p.Done < p.Total ? $" · berechne Watt-Werte: {p.Done} / {p.Total} …" : "";
+            UpdateSummary();
+        });
+        await AppServices.Power.BackfillAsync(progress, (id, watts) =>
+            Dispatcher.InvokeAsync(() =>
+            {
+                if (byId.TryGetValue(id, out var a)) a.SetPower(watts);
+            }));
+        _powerProgress = "";
+        UpdateSummary();
+    }
+
+    // ------------------------------------------------------------------ Auswahl, Karte, Details
 
     private async void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (Table.SelectedItem is not Activity a) return;
         _selected = a;
-        ShowDetails(a);
-        await ShowMapAndPhotosAsync(a);
+        DetailsButton.IsEnabled = true;
+        if (_detailWindow is not null) _ = _detailWindow.ShowAsync(a);   // offenes Detailfenster folgt der Auswahl
+        await ShowMapAsync(a);
     }
 
-    private void ShowDetails(Activity a)
+    private void OnTableDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        DetailName.Text = a.Name;
-        DetailSub.Text = $"{a.TypeLabel} · {a.Start:dddd, d. MMMM yyyy, HH:mm}";
-        DetailLocation.Text = a.LocationName ?? "";
-        DetailLocation.Visibility = string.IsNullOrWhiteSpace(a.LocationName) ? Visibility.Collapsed : Visibility.Visible;
-
-        TileKm.Text = $"{a.Km:N1} km";
-        TileHm.Text = $"{a.ElevationGain:N0} m";
-        TileTime.Text = a.DurationText;
-        Tiles.Visibility = Visibility.Visible;
-
-        var lines = new List<KeyValuePair<string, string>>
-        {
-            new("Dauer", Format.Duration(a.DurationS, withSeconds: true)),
-        };
-        if (Stats.ShowsSpeed(a.TypeKey))
-        {
-            if (a.AvgSpeed is double avg && avg > 0)
-            {
-                lines.Add(new("Ø Geschwindigkeit", $"{avg * 3.6:N1} km/h"));
-                if (a.TypeKey == "running") lines.Add(new("Ø Pace", $"{Format.Pace(1000.0 / avg)} /km"));
-            }
-            if (Stats.TrustedMaxSpeed(a.TypeKey, a.MaxSpeed, a.DeviceId) is double max)
-            {
-                lines.Add(new("Max. Geschwindigkeit", $"{max * 3.6:N1} km/h"));
-            }
-        }
-        if (a.MinElev is double minElev) lines.Add(new("Tiefster Punkt", $"{minElev:N0} m"));
-        if (a.MaxElev is double maxElev) lines.Add(new("Höchster Punkt", $"{maxElev:N0} m"));
-        if (a.AvgHr is double hr) lines.Add(new("Ø Puls", $"{hr:N0} bpm"));
-        if (a.Calories is double kcal) lines.Add(new("Kalorien", $"{kcal:N0} kcal"));
-        lines.Add(new("Aktivitäts-ID", a.Id.ToString()));
-        _detailLines = lines;
-        DetailList.ItemsSource = lines;
-
-        GarminButton.Visibility = Visibility.Visible;
+        // nur Doppelklick auf eine Zeile, nicht auf den Spaltenkopf
+        if (e.OriginalSource is DependencyObject d && ItemsControl.ContainerFromElement(Table, d) is DataGridRow)
+            OpenDetails();
     }
 
-    private void OnGarminClick(object sender, RoutedEventArgs e)
+    private void OnTableKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter || _selected is null) return;
+        OpenDetails();
+        e.Handled = true;   // sonst springt die Auswahl eine Zeile weiter
+    }
+
+    private void OnDetailsClick(object sender, RoutedEventArgs e) => OpenDetails();
+
+    private void OpenDetails()
     {
         if (_selected is null) return;
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo($"https://connect.garmin.com/modern/activity/{_selected.Id}")
+        if (_detailWindow is null)
         {
-            UseShellExecute = true,
-        });
+            _detailWindow = new TourDetailWindow { Owner = Window.GetWindow(this) };
+            _detailWindow.Closed += (_, _) => _detailWindow = null;
+            _detailWindow.Show();
+        }
+        else
+        {
+            _detailWindow.Activate();
+        }
+        if (_detailWindow.CurrentActivity != _selected) _ = _detailWindow.ShowAsync(_selected);
     }
-
-    // ------------------------------------------------------------------ Karte & Fotos
 
     private async Task InitMapAsync()
     {
         await MapHost.InitAsync(Map);
         Map.WebMessageReceived += (_, e) =>
         {
-            if (MapHost.PhotoIndex(e) is int index) OpenPhoto(index);
+            if (MapHost.PhotoIndex(e) is int index && index >= 0 && index < _photos.Count)
+                new PhotoWindow(_photos, index, _selected?.Name ?? "Foto") { Owner = Window.GetWindow(this) }.Show();
         };
     }
 
@@ -236,85 +230,24 @@ public partial class AktivitaetenPage : Page
         }.Show();
     }
 
-    private async Task ShowMapAndPhotosAsync(Activity a)
+    private async Task ShowMapAsync(Activity a)
     {
         int request = ++_trackRequest;
-        TrackStatus.Text = "Lade Track und Fotos …";
+        TrackStatus.Text = $"{a.Name} · {a.Start:dd.MM.yyyy} · lade Track und Fotos …";
         _mapScript = null;
-        EnlargeButton.IsEnabled = false;
         _photos = [];
-        PhotoList.ItemsSource = null;
-        PhotoPanel.Visibility = Visibility.Collapsed;
+        EnlargeButton.IsEnabled = false;
 
         var result = await TourMap.BuildAsync(a);
         if (_mapInit is not null) await _mapInit;
-        if (request != _trackRequest) return;   // inzwischen andere Aktivität gewählt
+        if (request != _trackRequest) return;   // inzwischen andere Tour gewählt
 
         await Map.ExecuteScriptAsync(result.Script);
         _mapScript = result.Script;
-        EnlargeButton.IsEnabled = result.HasContent;
-        TrackStatus.Text = result.Status;
-
         _photos = result.Photos;
-        var stripTask = ShowPhotoStripAsync(result.Photos, request);
-        await ShowPowerAsync(a, result.Track, request);
-        await stripTask;
-    }
-
-    /// <summary>Radfahren: geschätzte beste Leistung am Berg (5/10/20 min) aus dem GPX unter den Details.</summary>
-    private async Task ShowPowerAsync(Activity a, TrackData track, int request)
-    {
-        if (!Stats.CyclingTypes.Contains(a.TypeKey) || Stats.IsIndoor(a.TypeKey, a.Name) || track.Timeline.Count < 2) return;
-
-        var powers = await Task.Run(() => Power.BestPowers(track.Timeline, a.TypeKey));
-        if (request != _trackRequest) return;
-
-        var lines = new List<KeyValuePair<string, string>>(_detailLines);
-        var found = Power.WindowsS.Zip(powers).Where(x => x.Second is not null).ToList();
-        lines.Add(new("Leistung am Berg (geschätzt)", found.Count == 0 ? "kein Anstieg" : ""));
-        foreach (var (window, watt) in found)
-        {
-            lines.Add(new($"   Beste {window / 60} min", $"{watt:N0} W"));
-        }
-        _detailLines = lines;
-        DetailList.ItemsSource = lines;
-    }
-
-    /// <summary>Vorschaustreifen füllen; Vorschaubilder werden nacheinander im Hintergrund geladen.</summary>
-    private async Task ShowPhotoStripAsync(List<TourPhoto> photos, int request)
-    {
-        PhotoPanel.Visibility = Visibility.Visible;
-        PhotoHeader.Text = photos.Count == 0 ? "Keine Fotos zu dieser Tour" : $"Fotos ({photos.Count})";
-        PhotoList.Visibility = photos.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
-        PhotoList.ItemsSource = photos;
-
-        foreach (var photo in photos)
-        {
-            if (request != _trackRequest) return;
-            photo.Thumb ??= await Task.Run(() => PhotoService.LoadImage(photo.Path, 240, photo.Orientation));
-        }
-    }
-
-    private void OnPhotoClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
-    {
-        // Angeklicktes Vorschaubild bestimmen (nicht die Scrollleiste)
-        if (ItemsControl.ContainerFromElement(PhotoList, (DependencyObject)e.OriginalSource) is ListBoxItem item)
-        {
-            OpenPhoto(PhotoList.ItemContainerGenerator.IndexFromContainer(item));
-        }
-    }
-
-    private void OnPhotoKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
-    {
-        if (e.Key == System.Windows.Input.Key.Enter && PhotoList.SelectedIndex >= 0) OpenPhoto(PhotoList.SelectedIndex);
-    }
-
-    private void OpenPhoto(int index)
-    {
-        if (index < 0 || index >= _photos.Count) return;
-        new PhotoWindow(_photos, index, _selected?.Name ?? "Foto")
-        {
-            Owner = Window.GetWindow(this),
-        }.Show();
+        EnlargeButton.IsEnabled = result.HasContent;
+        var photos = result.Photos.Count switch { 0 => "keine Fotos", 1 => "1 Foto", var n => $"{n} Fotos" };
+        TrackStatus.Text = $"{a.Name} · {a.Start:dd.MM.yyyy} · {photos}" +
+                           (string.IsNullOrEmpty(result.Status) ? "" : $" · {result.Status}");
     }
 }
